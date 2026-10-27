@@ -1,8 +1,11 @@
 package com.hilite.parking.controller;
 
 import com.hilite.parking.Navigator;
-import com.hilite.parking.preview.PreviewData;
-import com.hilite.parking.preview.PreviewExitQuote;
+import com.hilite.parking.repository.DataAccessException;
+import com.hilite.parking.service.ExitOutcome;
+import com.hilite.parking.service.ExitQuote;
+import com.hilite.parking.service.ExitService;
+import com.hilite.parking.service.ExitSummary;
 import com.hilite.parking.util.FormatUtil;
 import com.hilite.parking.util.GarageBackdrop;
 import com.hilite.parking.util.Icons;
@@ -20,7 +23,6 @@ import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextFormatter;
-import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -29,9 +31,24 @@ import javafx.util.Duration;
 
 import java.net.URL;
 import java.util.ResourceBundle;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 
-/** Vehicle Exit kiosk with four sequential presentation states. */
-public class ExitController implements Initializable, NavigatorAware {
+/**
+ * Vehicle Exit kiosk with four sequential states: scan → session &amp; fee → demo payment →
+ * success.
+ *
+ * <p>Every value shown comes from the {@link ExitService}. The controller holds the one
+ * {@link ExitQuote} it displayed and passes that same quote back on confirmation, so the amount
+ * charged is always the amount shown. Calculating a fee, opening the payment panel and
+ * cancelling never write anything; only {@link ExitService#confirmPayment} and
+ * {@link ExitService#completeZeroFee} close a session. All calls run on the JavaFX Application
+ * Thread, and the action buttons are disabled while a call is in progress.</p>
+ */
+public class ExitController implements Initializable, NavigatorAware, ExitServiceAware {
+
+    private static final String DEMO_SCAN_PLATE = "KL 11 AB 1234";
+    private static final String MESSAGE_NOT_READY = "The exit kiosk is not ready yet. Please try again.";
 
     @FXML private KioskHeaderController headerController;
     @FXML private StackPane backdropHost;
@@ -67,21 +84,28 @@ public class ExitController implements Initializable, NavigatorAware {
     @FXML private Button payButton;
 
     @FXML private Label paymentAmountLabel;
+    @FXML private Label paymentSummaryLabel;
+    @FXML private Label paymentErrorLabel;
     @FXML private StackPane paymentCardIconHost;
     @FXML private Button cancelPaymentButton;
     @FXML private Button confirmPaymentButton;
 
     @FXML private StackPane successBadge;
     @FXML private Label successTitleLabel;
+    @FXML private Label successAmountCaption;
     @FXML private Label successAmountLabel;
+    @FXML private Label successAmountHint;
     @FXML private Label successPlateLabel;
     @FXML private Label successEntryLabel;
     @FXML private Label successExitLabel;
+    @FXML private Label successDurationLabel;
     @FXML private Button successDoneButton;
 
     private Navigator navigator;
-    private PreviewExitQuote quote;
+    private ExitService exitService;
+    private ExitQuote quote;
     private boolean scanComplete;
+    private boolean busy;
     private Timeline scanTimeline;
     private TranslateTransition beamAnimation;
     private VBox[] states;
@@ -107,6 +131,11 @@ public class ExitController implements Initializable, NavigatorAware {
         }
     }
 
+    @Override
+    public void setExitService(ExitService exitService) {
+        this.exitService = exitService;
+    }
+
     private void configureIcons() {
         calculateButton.setText("Calculate Parking Fee");
         calculateButton.setGraphic(Icons.arrowRight(19, "icon-white"));
@@ -125,13 +154,13 @@ public class ExitController implements Initializable, NavigatorAware {
         plateField.setTextFormatter(new TextFormatter<String>(change ->
                 change.getControlNewText().length() <= 16 ? change : null));
         plateField.textProperty().addListener((observable, oldValue, newValue) -> {
-            hideError();
+            hide(errorLabel);
             clearPlateButton.setDisable(plateField.isDisabled() || newValue.isBlank());
         });
         clearPlateButton.setOnAction(event -> {
             plateField.clear();
             plateField.requestFocus();
-            hideError();
+            hide(errorLabel);
         });
         plateField.disableProperty().addListener((observable, wasDisabled, isDisabled) ->
                 clearPlateButton.setDisable(isDisabled || plateField.getText().isBlank()));
@@ -171,8 +200,8 @@ public class ExitController implements Initializable, NavigatorAware {
         scanTitle.setText("Number plate ready");
         scanSubtitle.setText("Review the plate, then calculate your fee.");
         scanIconHost.getChildren().add(Icons.check(20, "icon-success"));
-        platePreview.setText(PreviewData.EXAMPLE_PLATE);
-        plateField.setText(PreviewData.EXAMPLE_PLATE);
+        platePreview.setText(DEMO_SCAN_PLATE);
+        plateField.setText(DEMO_SCAN_PLATE);
         plateField.setDisable(false);
         plateField.requestFocus();
         plateField.positionCaret(plateField.getText().length());
@@ -181,95 +210,215 @@ public class ExitController implements Initializable, NavigatorAware {
         scanProgress.getStyleClass().add("scan-complete");
     }
 
+    // ---- State A: scan → quote -------------------------------------------------------------
+
     @FXML
     private void handleCalculate() {
+        if (busy) {
+            return;
+        }
         if (!scanComplete) {
             showError("Please wait for the simulated scan to finish.");
             return;
         }
-        String plate = FormatUtil.normalizePlate(plateField.getText());
-        if (plate.isEmpty()) {
-            showError("Enter your vehicle number plate to preview the session.");
+        if (exitService == null) {
+            showError(MESSAGE_NOT_READY);
+            return;
+        }
+        String rawPlate = plateField.getText();
+        if (rawPlate == null || rawPlate.isBlank()) {
+            showError("Enter your vehicle number plate to calculate the fee.");
             plateField.requestFocus();
             return;
         }
-        plateField.setText(plate);
-        hideError();
-        quote = PreviewData.createExitQuote(plate);
-        populateDetails();
-        showState(detailsState, true);
+
+        busy = true;
+        hide(errorLabel);
+        plateField.setDisable(true);
+        calculateButton.setDisable(true);
+        calculateButton.setText("Calculating your fee…");
+        calculateButton.setGraphic(spinner());
+
+        runAfterPause(() -> exitService.quote(rawPlate), outcome -> {
+            restoreScanControls();
+            if (outcome instanceof ExitOutcome.Quoted quoted) {
+                quote = quoted.quote();
+                populateDetails();
+                showState(detailsState, true);
+            } else if (outcome instanceof ExitOutcome.Rejected rejected) {
+                showError(rejected.message());
+            } else {
+                showError(MESSAGE_NOT_READY);
+            }
+        }, () -> {
+            restoreScanControls();
+            showError("Could not read your parking session. Please try again.");
+        });
     }
+
+    private void restoreScanControls() {
+        busy = false;
+        plateField.setDisable(false);
+        calculateButton.setDisable(false);
+        calculateButton.setText("Calculate Parking Fee");
+        calculateButton.setGraphic(Icons.arrowRight(19, "icon-white"));
+    }
+
+    // ---- State B: session and fee ----------------------------------------------------------
 
     private void populateDetails() {
         detailPlateLabel.setText(quote.registration());
-        detailTypeLabel.setText(quote.vehicleType().displayName() + " · preview session");
+        detailTypeLabel.setText(quote.vehicleType().displayName() + " · Bay " + quote.slotId()
+                + ", " + quote.floor().displayName());
         entryLabel.setText(FormatUtil.dateTime(quote.entryTime()));
         exitLabel.setText(FormatUtil.dateTime(quote.exitTime()));
-        durationLabel.setText(FormatUtil.duration(quote.duration()));
-        freeLabel.setText(FormatUtil.duration(quote.freeAllowance()) + " included");
-        chargeableLabel.setText(FormatUtil.duration(quote.chargeableDuration()) + " (rounded up)");
-        rateLabel.setText(quote.hourlyRateLabel());
+        durationLabel.setText(FormatUtil.duration(quote.totalDuration()));
+        freeLabel.setText("First " + quote.freeAllowance().toMinutes() + " minutes free");
+        chargeableLabel.setText(quote.chargeableDuration().isZero()
+                ? "None"
+                : FormatUtil.duration(quote.chargeableDuration()) + " (rounded up)");
+        rateLabel.setText(FormatUtil.money(quote.hourlyRate()) + " per hour");
         feeLabel.setText(FormatUtil.money(quote.amountDue()));
-        paymentNotice.setVisible(false);
-        paymentNotice.setManaged(false);
-        payButton.setText(quote.paymentRequired() ? "Pay & Exit" : "Complete Exit");
+        hide(paymentNotice);
+        restoreDetailControls();
+    }
+
+    private void restoreDetailControls() {
+        busy = false;
+        detailBackButton.setDisable(false);
+        payButton.setDisable(false);
+        payButton.setText(quote != null && quote.paymentRequired() ? "Pay & Exit" : "Complete Exit");
+        payButton.setGraphic(Icons.arrowRight(19, "icon-white"));
     }
 
     @FXML
     private void handleBackToScan() {
+        if (busy) {
+            return;
+        }
+        quote = null;
         showState(scanState, true);
     }
 
     @FXML
     private void handlePay() {
-        if (quote == null) {
+        if (busy || quote == null) {
             return;
         }
         if (quote.paymentRequired()) {
+            // Opening the payment panel writes nothing; the session stays active.
             paymentAmountLabel.setText(FormatUtil.money(quote.amountDue()));
+            paymentSummaryLabel.setText(quote.registration() + " · parked "
+                    + FormatUtil.duration(quote.totalDuration()));
+            hide(paymentErrorLabel);
             showState(paymentState, true);
-        } else {
-            showSuccess();
+            return;
         }
+
+        ExitQuote freeQuote = quote;
+        busy = true;
+        hide(paymentNotice);
+        detailBackButton.setDisable(true);
+        payButton.setDisable(true);
+        payButton.setText("Closing your session…");
+        payButton.setGraphic(spinner());
+
+        runAfterPause(() -> exitService.completeZeroFee(freeQuote),
+                outcome -> handleCompletion(outcome, this::restoreDetailControls,
+                        message -> showNotice(message, true)),
+                () -> {
+                    restoreDetailControls();
+                    showNotice("Could not close your parking session. It is still open — please try again.",
+                            true);
+                });
     }
+
+    // ---- State C: demo payment -------------------------------------------------------------
 
     @FXML
     private void handleCancelPayment() {
+        if (busy) {
+            return;
+        }
+        // Nothing has been written: the session is still active and the bay stays occupied.
         showState(detailsState, true);
-        paymentNotice.setText("Payment cancelled. This preview session remains open — no charge was made.");
-        paymentNotice.setManaged(true);
-        paymentNotice.setVisible(true);
+        showNotice("Payment cancelled. Your parking session is still open and no charge was made.",
+                false);
     }
 
     @FXML
     private void handleConfirmPayment() {
+        if (busy || quote == null) {
+            return;
+        }
+        ExitQuote paidQuote = quote;
+        busy = true;
+        hide(paymentErrorLabel);
         confirmPaymentButton.setDisable(true);
         cancelPaymentButton.setDisable(true);
         confirmPaymentButton.setText("Confirming…");
-        ProgressIndicator spinner = new ProgressIndicator();
-        spinner.setPrefSize(17, 17);
-        spinner.setMaxSize(17, 17);
-        spinner.getStyleClass().add("button-spinner");
-        confirmPaymentButton.setGraphic(spinner);
+        confirmPaymentButton.setGraphic(spinner());
 
-        PauseTransition pause = new PauseTransition(Duration.millis(600));
-        pause.setOnFinished(event -> {
-            confirmPaymentButton.setDisable(false);
-            cancelPaymentButton.setDisable(false);
-            confirmPaymentButton.setText("Confirm Demo Payment");
-            confirmPaymentButton.setGraphic(Icons.card(19, "icon-white"));
-            showSuccess();
-        });
-        pause.play();
+        runAfterPause(() -> exitService.confirmPayment(paidQuote),
+                outcome -> handleCompletion(outcome, this::restorePaymentControls,
+                        message -> show(paymentErrorLabel, message)),
+                () -> {
+                    restorePaymentControls();
+                    show(paymentErrorLabel,
+                            "Could not record the demo payment. Nothing was charged and your session is still open — please try again.");
+                });
     }
 
-    private void showSuccess() {
-        boolean paid = quote.paymentRequired();
+    private void restorePaymentControls() {
+        busy = false;
+        confirmPaymentButton.setDisable(false);
+        cancelPaymentButton.setDisable(false);
+        confirmPaymentButton.setText("Confirm Demo Payment");
+        confirmPaymentButton.setGraphic(Icons.card(19, "icon-white"));
+    }
+
+    /**
+     * Shows success only for a saved completion. A quote that is no longer valid (closed
+     * elsewhere, recalculated, unknown) sends the kiosk back to the scan state with the reason,
+     * so it can never be retried with the old amount.
+     */
+    private void handleCompletion(ExitOutcome outcome, Runnable restore,
+                                  Consumer<String> showInPlace) {
+        if (outcome instanceof ExitOutcome.Completed completed) {
+            busy = false;
+            showSuccess(completed.summary());
+            return;
+        }
+        restore.run();
+        if (outcome instanceof ExitOutcome.Rejected rejected) {
+            switch (rejected.reason()) {
+                case STALE_QUOTE, ALREADY_COMPLETED, SESSION_NOT_FOUND -> {
+                    quote = null;
+                    showState(scanState, true);
+                    showError(rejected.message());
+                }
+                default -> showInPlace.accept(rejected.message());
+            }
+        } else {
+            showInPlace.accept(MESSAGE_NOT_READY);
+        }
+    }
+
+    // ---- State D: success ------------------------------------------------------------------
+
+    private void showSuccess(ExitSummary summary) {
+        quote = null;
+        boolean paid = summary.paid();
         successTitleLabel.setText(paid ? "Payment successful" : "No payment required");
-        successAmountLabel.setText(FormatUtil.money(quote.amountDue()));
-        successPlateLabel.setText(quote.registration() + " · " + quote.vehicleType().displayName());
-        successEntryLabel.setText(FormatUtil.dateTime(quote.entryTime()));
-        successExitLabel.setText(FormatUtil.dateTime(quote.exitTime()));
+        successAmountCaption.setText(paid ? "AMOUNT PAID" : "PARKING FEE");
+        successAmountLabel.setText(FormatUtil.money(summary.amountPaid()));
+        successAmountHint.setText(paid
+                ? "Demo payment confirmed · no real money collected"
+                : "Within the free allowance · no payment taken");
+        successPlateLabel.setText(summary.registration() + " · " + summary.vehicleType().displayName());
+        successEntryLabel.setText(FormatUtil.dateTime(summary.entryTime()));
+        successExitLabel.setText(FormatUtil.dateTime(summary.exitTime()));
+        successDurationLabel.setText(FormatUtil.duration(summary.totalDuration()));
         showState(successState, true);
     }
 
@@ -278,6 +427,38 @@ public class ExitController implements Initializable, NavigatorAware {
         if (navigator != null) {
             navigator.showExit();
         }
+    }
+
+    // ---- helpers ---------------------------------------------------------------------------
+
+    /**
+     * Runs one service call after a short visual pause, on the FX thread. A
+     * {@link DataAccessException} is an unexpected persistence failure; it is reported in place
+     * and never treated as a parking outcome.
+     */
+    private void runAfterPause(Supplier<ExitOutcome> call,
+                               Consumer<ExitOutcome> onOutcome,
+                               Runnable onFailure) {
+        PauseTransition pause = new PauseTransition(Duration.millis(450));
+        pause.setOnFinished(event -> {
+            ExitOutcome outcome;
+            try {
+                outcome = call.get();
+            } catch (DataAccessException exception) {
+                onFailure.run();
+                return;
+            }
+            onOutcome.accept(outcome);
+        });
+        pause.play();
+    }
+
+    private static ProgressIndicator spinner() {
+        ProgressIndicator spinner = new ProgressIndicator();
+        spinner.setPrefSize(17, 17);
+        spinner.setMaxSize(17, 17);
+        spinner.getStyleClass().add("button-spinner");
+        return spinner;
     }
 
     private void showState(VBox state, boolean animate) {
@@ -291,14 +472,24 @@ public class ExitController implements Initializable, NavigatorAware {
         }
     }
 
-    private void showError(String message) {
-        errorLabel.setText(message);
-        errorLabel.setManaged(true);
-        errorLabel.setVisible(true);
+    private void showNotice(String message, boolean error) {
+        paymentNotice.getStyleClass().removeAll("inline-info", "inline-error");
+        paymentNotice.getStyleClass().add(error ? "inline-error" : "inline-info");
+        show(paymentNotice, message);
     }
 
-    private void hideError() {
-        errorLabel.setManaged(false);
-        errorLabel.setVisible(false);
+    private void showError(String message) {
+        show(errorLabel, message);
+    }
+
+    private static void show(Label label, String message) {
+        label.setText(message);
+        label.setManaged(true);
+        label.setVisible(true);
+    }
+
+    private static void hide(Label label) {
+        label.setManaged(false);
+        label.setVisible(false);
     }
 }

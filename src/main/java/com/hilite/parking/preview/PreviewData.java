@@ -1,8 +1,5 @@
 package com.hilite.parking.preview;
 
-import com.hilite.parking.util.FormatUtil;
-
-import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -18,7 +15,6 @@ public final class PreviewData {
 
     /** Configurable preview PIN. Demonstration navigation only, never shown in the UI. */
     public static final String ADMIN_PIN = "1234";
-    public static final String EXAMPLE_PLATE = "KL 11 AB 1234";
 
     private static final LocalDateTime SAMPLE_NOW = LocalDateTime.now();
 
@@ -50,25 +46,6 @@ public final class PreviewData {
     );
 
     private PreviewData() {
-    }
-
-    /**
-     * Preview-only 4 h 24 min car stay, matching the supplied exit design reference.
-     */
-    public static PreviewExitQuote createExitQuote(String registration) {
-        LocalDateTime exitTime = LocalDateTime.now();
-        LocalDateTime entryTime = exitTime.minusHours(4).minusMinutes(24);
-        return new PreviewExitQuote(
-                FormatUtil.normalizePlate(registration),
-                VehicleType.CAR,
-                entryTime,
-                exitTime,
-                Duration.ofMinutes(264),
-                Duration.ofMinutes(120),
-                Duration.ofMinutes(144),
-                "₹5 per hour",
-                new BigDecimal("15")
-        );
     }
 
     public static List<PreviewBay> bays() {
