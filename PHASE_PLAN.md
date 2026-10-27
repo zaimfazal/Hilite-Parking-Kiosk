@@ -635,9 +635,9 @@ Acceptance checklist:
 
 ## Phase 5 — Vehicle exit, fees, demo payment, release
 
-**Status: Not started · Depends on: Phase 4**
+**Status: Complete (2026-10-28) · Depends on: Phase 4**
 
-Scope:
+Scope (as planned):
 
 - `ExitService`/workflow with states: quote → payment (if fee > 0) → confirm/close.
 - Exit controller implementing four sequential states (scan, session+fee, payment, success);
@@ -646,21 +646,184 @@ Scope:
 - Transactional close + payment + bay release; idempotent against double confirm.
 - Success summary + Done returns to exit starting state.
 
-Required tests:
+### How this phase was delivered (honest provenance)
 
-- [ ] Unknown plate → not-found error, nothing changed.
-- [ ] Already-completed session cannot be quoted/charged again.
-- [ ] Fee quote follows frozen rules using stored entry time and injected quote time.
-- [ ] Cancelled payment leaves session active, bay occupied, no payment row.
-- [ ] Confirmed payment closes session, writes one payment row, frees the bay.
-- [ ] Zero-fee exit closes without payment record.
-- [ ] Double confirm/exit cannot double-charge or double-release.
-- [ ] Free allowance, chargeable duration, rate and amount displayed consistently with service.
+When the Phase 5 audit started on 2026-10-28, the service, transaction and test workstreams
+(A, B, C) were **already present in the source tree, undocumented**. This plan still said
+"Not started" at that point. The files were `ExitService`, `ExitQuote`, `ExitOutcome`,
+`ExitSummary`, `ExitCompletionRepository`, `JdbcExitCompletionRepository`, `ExitServiceAware`,
+the `Navigator`/`MainApp` wiring, `ParkingSessionRepository.findLatestByRegistration`, the public
+`FeeCalculator.FREE_ALLOWANCE`/`hourlyRate`, and `ExitServiceTest` (27 tests) with
+`ExitTestSupport`. Their origin is not recorded in this repository: it has a single
+"Initial commit" and no history. The lead audited these files against the Phase 5 specification
+and accepted them unchanged. They build, and all 157 tests pass.
 
-Acceptance: all above pass + manual lifecycle: enter → exit paid, enter → exit free,
-enter → exit cancel → exit again.
+Workstream D (Exit UI) was **missing**. `ExitController` still used
+`PreviewData.createExitQuote`, did not implement `ExitServiceAware`, and "confirmed" payment
+with a 600 ms animation that saved nothing. With only one workstream left, the lead implemented
+it **directly and sequentially**, without parallel subagents, then did the integration,
+verification and documentation.
 
-Verification: `mvn -q test -Dtest='*Exit*'` + launched UI check.
+### Public exit service contract
+
+```java
+public final class ExitService {
+    public ExitService(ParkingSlotRepository, ParkingSessionRepository,
+                       ExitCompletionRepository, FeeCalculator);
+    public ExitService(ParkingSlotRepository, ParkingSessionRepository,
+                       ExitCompletionRepository, FeeCalculator, Clock);
+    public ExitOutcome quote(String registration);        // read-only
+    public ExitOutcome completeZeroFee(ExitQuote quote);  // fee == 0, no payment row
+    public ExitOutcome confirmPayment(ExitQuote quote);   // fee > 0, one CONFIRMED payment
+}
+
+public sealed interface ExitOutcome {
+    enum Reason { INVALID_REGISTRATION, SESSION_NOT_FOUND, ALREADY_COMPLETED,
+                  STALE_QUOTE, PAYMENT_REQUIRED, NO_PAYMENT_REQUIRED }
+    record Quoted(ExitQuote quote)        implements ExitOutcome {}
+    record Completed(ExitSummary summary) implements ExitOutcome {}
+    record Rejected(Reason reason, String message) implements ExitOutcome {}
+}
+
+public record ExitQuote(String sessionId, String registration, VehicleType vehicleType,
+                        String slotId, Floor floor, Instant entryTime, Instant exitTime,
+                        Duration totalDuration, Duration freeAllowance,
+                        Duration chargeableDuration, BigDecimal hourlyRate,
+                        BigDecimal amountDue) { boolean paymentRequired(); }
+
+public record ExitSummary(String sessionId, String registration, VehicleType vehicleType,
+                          Instant entryTime, Instant exitTime, Duration totalDuration,
+                          BigDecimal amountPaid, String paymentId /* null iff zero fee */) {}
+
+public interface ExitCompletionRepository {
+    boolean complete(String sessionId, Instant exitTime, BigDecimal finalFee, Payment payment);
+}
+```
+
+- `quote` reads `Instant.now(clock)` **once**. Amount due comes only from
+  `FeeCalculator.calculateFee(type, storedEntry, quotedExit)`. The chargeable hours shown are
+  derived from that fee (`fee / rate`), so the rounding rule is not repeated anywhere.
+- A plate that has never parked returns `SESSION_NOT_FOUND`; a plate whose latest session is
+  closed returns `ALREADY_COMPLETED`. Neither produces a fee.
+- `DataAccessException` is not a parking outcome. It propagates, and the controller shows an
+  inline error without ever reaching the success state. Controllers never see JDBC or SQL types.
+
+### Transaction strategy
+
+`JdbcExitCompletionRepository.complete` uses **one connection with auto-commit off**:
+
+1. `UPDATE parking_sessions SET exit_time = ?, final_fee_paise = ? WHERE session_id = ? AND
+   exit_time IS NULL`. If 0 rows change, it rolls back and returns `false`: another attempt has
+   already won.
+2. If a payment is supplied, it is inserted on the same connection. It must be `CONFIRMED`,
+   belong to the same session, and have an amount equal to `finalFee`, or it is rejected before
+   any SQL runs.
+3. `commit()`, then return `true`. Any `SQLException` or runtime failure rolls back both writes
+   (a rollback failure is attached as suppressed) and is rethrown as `DataAccessException`.
+
+Before calling it, `ExitService` re-reads the session. It refuses a session that is already
+closed (`ALREADY_COMPLETED`) or a quote whose session, plate, type, bay or entry time no longer
+match, or whose amount differs from a recalculation at the quoted instant (`STALE_QUOTE`). The
+quoted exit time and amount are stored unchanged. The existing one-confirmed-payment-per-session
+index remains the final safeguard.
+
+### Exit UI (workstream D, implemented in this phase)
+
+- `ExitController` implements `ExitServiceAware`. It keeps the simulated scan and the editable
+  plate field. **Calculate Parking Fee** calls `quote` after a short spinner pause on the FX
+  thread.
+- Session & fee state: plate, vehicle · bay · floor, entry time, quoted exit time, total
+  duration, "First 120 minutes free", chargeable hours ("None" or "N h (rounded up)"), hourly
+  rate and a prominent amount due.
+- **Pay & Exit** (fee > 0) only opens the payment panel (amount, plate, duration,
+  demonstration notice); nothing is written. **Complete Exit** (fee = 0) calls
+  `completeZeroFee`.
+- **Cancel** returns to the fee state with "Payment cancelled… session is still open"; nothing
+  is written. **Confirm Demo Payment** calls `confirmPayment` with the **same** quote object.
+- A `busy` flag plus disabled buttons ignore repeated clicks. If a request is refused as
+  `STALE_QUOTE`, `ALREADY_COMPLETED` or `SESSION_NOT_FOUND`, the screen returns to the scan state
+  with the reason inline, so an old quote cannot be retried.
+- Success state: title (Payment successful / No payment required), amount paid or ₹0 fee, plate
+  · vehicle, entry, exit, duration, "Parking Session Closed". **Done** reloads the exit screen.
+- `exit.fxml`: preview wording replaced. Added `paymentSummaryLabel`, `paymentErrorLabel`,
+  `successAmountCaption`, `successAmountHint` and a Duration row (`successDurationLabel`). No
+  layout, style or CSS change.
+- Deleted `preview/PreviewExitQuote.java`, `PreviewData.createExitQuote` and the now-unused
+  `PreviewData.EXAMPLE_PLATE`.
+
+### Tests (`service.ExitServiceTest`, 27 tests, fresh `@TempDir` SQLite, fixed clock)
+
+| Requirement | Test(s) |
+|---|---|
+| Car / bike quote correct | `carQuoteIsCorrect`, `bikeQuoteIsCorrect` |
+| Exactly 120 min free; 120 min + 1 s charged | `exactlyTwoHoursIsFree`, `oneSecondOverFreeAllowanceIsCharged` |
+| Partial hour rounding; long stay | `partialChargeableHourRoundsUp`, `longStayFee` |
+| Missing / invalid / unknown plate | `invalidRegistrationsRejected`, `unknownRegistrationIsNotFound` |
+| Already-completed session | `completedSessionIsReported`, `completedQuoteConfirmedAgain` |
+| Quote keeps its billing timestamp; fresh quote → fresh time | `quoteUsesOneCapturedExitTimestamp`, `freshQuoteUsesFreshTimestamp` |
+| Quote / cancel writes nothing | `quoteDoesNotModifySession`, `quoteNeverCreatesPayment`, `repeatedQuotesLeaveSessionUnchanged` |
+| Paid exit: one payment, completed, exit = quote time, fee = quote, bay freed, survives reopen | `confirmPaymentCompletesSessionAndWritesOnePayment`, `paidExitFreesTheBay`, `paidExitPersistsAfterReopen` |
+| Zero-fee exit: no payment, ₹0, bay freed | `zeroFeeExitClosesWithoutPayment` |
+| Repeat / stale / wrong-path attempts | `secondConfirmationCannotChargeTwice`, `staleQuoteCannotCloseAnotherSession`, `tamperedFeeQuoteIsStale`, `paidQuoteCannotUseZeroFeePath`, `zeroFeeQuoteCannotConfirmPayment` |
+| Rollback (trigger forces failure **after** the session update) | `paymentInsertFailureRollsBackCompletion`, `sessionUpdateFailureRollsBackEverything`, `zeroFeeCompletionFailureLeavesSessionActive` |
+
+Required checklist:
+
+- [x] Unknown plate → not-found error, nothing changed.
+- [x] Already-completed session cannot be quoted/charged again.
+- [x] Fee quote follows frozen rules using stored entry time and injected quote time.
+- [x] Cancelled payment leaves session active, bay occupied, no payment row.
+- [x] Confirmed payment closes session, writes one payment row, frees the bay.
+- [x] Zero-fee exit closes without payment record.
+- [x] Double confirm/exit cannot double-charge or double-release.
+- [x] Free allowance, chargeable duration, rate and amount displayed consistently with service.
+
+### Verification evidence (2026-10-28, second machine)
+
+Environment: Windows 11 `10.0.26300`, Oracle Java 26.0.2.1, Maven 3.9.11 from
+`~/.m2/wrapper/dists` (`mvn` not on `PATH`). The build targets `--release 21`.
+
+- `mvn -B clean verify` → **BUILD SUCCESS**; 50 main + 14 test source files;
+  **Tests run: 157, Failures: 0, Errors: 0, Skipped: 0** (130 baseline + 27 exit). It passed
+  both before and after the UI change.
+- `mvn javafx:run` with `JAVA_TOOL_OPTIONS=-Dhilite.db=<scratch file>` → window **HiLITE Mall
+  Smart Parking** opened, with no exception in the Maven output. The demo DB was created outside
+  the project, and no `data/` folder was created in the project. Only the launched process tree
+  was stopped afterwards, and no `java` process remained.
+- A throwaway harness (outside the project tree, now discarded) launched the real `MainApp` on a
+  seeded temporary DB. It drove the real Exit screen with `Button.fire()` and field updates, and
+  checked SQLite after each step:
+  - enter → exit **cancel → exit again**: KL03CC3333 (3 h 10 min car) quoted ₹10 / 2 h /
+    ₹5 per hour. Cancel → still active, G-04 still occupied, 0 payments, the same quote time
+    still displayed. Confirm, **fired twice**, → exactly 1 payment of 1000 paise, final fee
+    1000 paise, G-04 free.
+  - Done → scan state; the same plate → "already been closed" inline; an unknown plate → "No
+    active parking session" inline.
+  - enter → exit **free**: KL02BB2222 (1 h bike) → ₹0, "None", **Complete Exit** → "No payment
+    required", still 1 payment, final fee 0.
+  - enter → exit **paid**: KL01AA1111 → 4 h 24 min, ₹15, 2 payments.
+  - The real Entry kiosk allocated KL05EE5555; an immediate exit closed it at ₹0. Entry
+    allocation still works.
+  - At the end: no active sessions, and every payment amount equals its session's final fee.
+  - One harness expectation was wrong, not the app. A bike seeded at exactly 5 h was quoted
+    about 90 s later, so it was billed 4 chargeable hours = ₹8, which is correct, not ₹6.
+- Screenshots of the details, payment, cancelled, success (paid/free) and repeat-exit states at
+  1600 × 900, plus details/payment/success at 1366 × 768, were reviewed. There was no clipping
+  or overlap, the existing design was unchanged, and the amount due was the dominant element.
+- **Limitation:** no physical mouse/keyboard interaction was performed. The UI evidence comes from
+  driving the real scene graph programmatically, and the `mvn javafx:run` launch was checked
+  separately.
+
+### Remaining issues / notes
+
+- Durations are displayed in whole minutes, while billing uses whole seconds. A 5 h 00 min 40 s
+  stay shows "5 h" with 4 chargeable hours. The amount is correct, but the display can look
+  inconsistent. This could be refined in Phase 7.
+- After **Done** the exit screen reloads, and the ~2 s simulated scan runs again and pre-fills
+  the demo plate `KL 11 AB 1234`. This is the existing scan behaviour, deliberately unchanged.
+- The admin dashboard and PIN remain preview-only (Phase 6). Exits do not update the dashboard.
+- Multi-agent execution was not used in this session (see provenance above).
+- Phase 5 stops here. Phase 6 has **not** been started.
 
 ---
 

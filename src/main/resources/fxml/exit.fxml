@@ -30,7 +30,7 @@
                     <StackPane fx:id="heroClockHost" styleClass="scan-icon-tile"/>
                     <VBox spacing="2">
                         <Label text="Exit kiosk" styleClass="scan-title"/>
-                        <Label text="Scan or type your plate to preview your parking fee." styleClass="scan-subtitle"/>
+                        <Label text="Scan or type your plate to calculate your parking fee." styleClass="scan-subtitle"/>
                     </VBox>
                 </HBox>
             </VBox>
@@ -44,7 +44,7 @@
                         <Label text="VEHICLE EXIT" styleClass="eyebrow"/>
                     </HBox>
                     <Label text="Vehicle Exit" styleClass="panel-title"/>
-                    <Label text="Scan your number plate to preview your parking session."
+                    <Label text="Scan your number plate to find your parking session."
                            styleClass="panel-subtitle" wrapText="true"/>
                     <Region minHeight="22"/>
 
@@ -82,7 +82,7 @@
                     <Region VBox.vgrow="ALWAYS" minHeight="14"/>
                     <Button fx:id="calculateButton" defaultButton="true" maxWidth="Infinity"
                             onAction="#handleCalculate" styleClass="primary-button, kiosk-cta"/>
-                    <Label text="Presentation preview only — no fee is charged and no bay is released."
+                    <Label text="Calculating the fee does not close your session or release your bay."
                            styleClass="panel-note" wrapText="true"/>
                 </VBox>
 
@@ -125,7 +125,7 @@
                         <Button fx:id="payButton" defaultButton="true" onAction="#handlePay"
                                 styleClass="primary-button, kiosk-cta" HBox.hgrow="ALWAYS" maxWidth="Infinity"/>
                     </HBox>
-                    <Label text="Preview values only — this is not a live billing record."
+                    <Label text="Calculated from your saved entry time. Your session stays open until you complete the exit."
                            styleClass="panel-note" wrapText="true"/>
                 </VBox>
 
@@ -137,8 +137,9 @@
                         <Label text="DEMO PAYMENT" styleClass="eyebrow"/>
                     </HBox>
                     <Label text="Demo payment" styleClass="panel-title"/>
-                    <Label text="Confirm the simulated payment to preview the exit summary."
+                    <Label text="Confirm the demo payment to close your parking session."
                            styleClass="panel-subtitle" wrapText="true"/>
+                    <Label fx:id="paymentSummaryLabel" styleClass="field-hint" wrapText="true"/>
                     <Region VBox.vgrow="ALWAYS" minHeight="20"/>
 
                     <VBox alignment="CENTER" spacing="8" styleClass="payment-amount-block">
@@ -149,8 +150,9 @@
                             <Label text="Demo payment · no real charge" styleClass="field-hint"/>
                         </HBox>
                     </VBox>
-                    <Label text="No gateway, card, UPI or bank connection is used in this prototype."
+                    <Label text="Demonstration only — no real money is collected. No gateway, card, UPI or bank connection is used."
                            styleClass="panel-note" wrapText="true"/>
+                    <Label fx:id="paymentErrorLabel" managed="false" styleClass="inline-error" visible="false" wrapText="true"/>
                     <Region VBox.vgrow="ALWAYS" minHeight="20"/>
 
                     <HBox alignment="CENTER" spacing="12">
@@ -173,15 +175,16 @@
                     <Region minHeight="20"/>
 
                     <VBox alignment="CENTER" spacing="6" styleClass="payment-amount-block">
-                        <Label text="AMOUNT PAID" styleClass="detail-label"/>
+                        <Label fx:id="successAmountCaption" text="AMOUNT PAID" styleClass="detail-label"/>
                         <Label fx:id="successAmountLabel" styleClass="payment-amount"/>
-                        <Label text="Demo payment confirmed" styleClass="field-hint"/>
+                        <Label fx:id="successAmountHint" text="Demo payment confirmed" styleClass="field-hint"/>
                     </VBox>
 
                     <VBox spacing="0" styleClass="fee-table, success-table">
                         <HBox styleClass="fee-row"><Label text="Vehicle" styleClass="fee-label"/><Region HBox.hgrow="ALWAYS"/><Label fx:id="successPlateLabel" styleClass="fee-value"/></HBox>
                         <HBox styleClass="fee-row"><Label text="Entry" styleClass="fee-label"/><Region HBox.hgrow="ALWAYS"/><Label fx:id="successEntryLabel" styleClass="fee-value"/></HBox>
                         <HBox styleClass="fee-row"><Label text="Exit" styleClass="fee-label"/><Region HBox.hgrow="ALWAYS"/><Label fx:id="successExitLabel" styleClass="fee-value"/></HBox>
+                        <HBox styleClass="fee-row"><Label text="Duration" styleClass="fee-label"/><Region HBox.hgrow="ALWAYS"/><Label fx:id="successDurationLabel" styleClass="fee-value"/></HBox>
                         <HBox styleClass="fee-row"><Label text="Status" styleClass="fee-label"/><Region HBox.hgrow="ALWAYS"/><Label text="Parking Session Closed" styleClass="status-closed"/></HBox>
                     </VBox>
 

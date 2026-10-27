@@ -4,28 +4,29 @@ A college demonstration desktop application for a fictional mall parking facilit
 JavaFX kiosk application with a vehicle-entry kiosk, an allocation confirmation screen, a
 vehicle-exit kiosk with demo payment, an admin PIN gate, and an operations dashboard.
 
-> **Current status: Phase 4 complete (2026-10-26) — entry kiosk and bay allocation are wired to
-> the real SQLite database.**
-> The Entry kiosk validates the plate, applies the frozen allocation rules, saves one active
-> session, and the Allocation screen plus its ticket display that saved record. The database is
-> initialized once at launch (`data/hilite-parking.db`, created on first start). The Exit kiosk,
-> Admin PIN and Dashboard still show **Phase 1 preview data**; fees, payment, live statistics,
-> long-stay alerts and reset arrive in Phases 5–6. **130 JUnit 5 tests** pass (44 main + 12 test
-> sources), including 24 new allocation tests on temporary databases. See `PHASE_PLAN.md`.
+> **Current status: Phase 5 complete (2026-10-28) — entry, allocation, exit, fee quote and demo
+> payment all run on the real SQLite database.**
+> The Entry kiosk saves one active session per vehicle. The Exit kiosk looks up that session,
+> quotes the fee with the frozen `FeeCalculator`, takes a demo payment when a fee is due, and
+> closes the session (freeing the bay) in one SQLite transaction. The database is initialized
+> once at launch (`data/hilite-parking.db`, created on first start). The Admin PIN and Dashboard
+> still show **Phase 1 preview data**; live statistics, long-stay alerts and reset arrive in
+> Phase 6. **157 JUnit 5 tests** pass (50 main + 14 test sources), including 27 exit tests on
+> temporary databases. See `PHASE_PLAN.md`.
 
 ---
 
 ## 1. What works in the UI
 
-These screens are **working JavaFX controls**, not mockup images. **Entry** and **Allocation**
-now run on persisted SQLite data; **Exit**, **Admin PIN** and **Dashboard** still render Phase 1
+These screens are **working JavaFX controls**, not mockup images. **Entry**, **Allocation** and
+**Exit** run on persisted SQLite data; **Admin PIN** and **Dashboard** still render Phase 1
 preview values.
 
 | Screen | How to reach it | Interactions that work |
 |---|---|---|
 | **Entry kiosk** (default) | App launch | Car / Bike selection, EV charging Yes / No, simulated number-plate scan animation, editable plate, **Find My Parking** (real allocation), inline errors for invalid plate, duplicate active plate, full car park and no charging bay, discreet lock button, `Ctrl+Shift+A` |
 | **Allocation** | Entry → **Find My Parking** | Real saved floor / bay / zone signage, session details from the database, **Print Parking Ticket** overlay built from the same record, **Simulate Print**, **Close** (or `Esc`), **Done** back to Entry |
-| **Exit kiosk** | Dashboard → **Exit Kiosk**, or the kiosk's exit mode | Four sequential states: scan → session & fee → demo payment → success. Calculate, Back, Pay & Exit, Cancel, Confirm Demo Payment, Done |
+| **Exit kiosk** | Dashboard → **Exit Kiosk**, or the kiosk's exit mode | Four sequential states on one screen: scan → session & fee → demo payment → success. **Calculate Parking Fee** (real quote, writes nothing), Back, **Pay & Exit** / **Complete Exit** (zero fee), Cancel (session stays open), **Confirm Demo Payment** (closes the session), Done; inline errors for invalid, unknown and already-closed plates |
 | **Admin PIN** | Lock button or `Ctrl+Shift+A` from a kiosk screen | On-screen keypad, Clear, Backspace, physical keyboard, `Enter`; wrong PIN shows an inline error and shake; PIN `1234` opens the dashboard; **Return to kiosk** / `Esc` |
 | **Dashboard** | Admin PIN → unlock | Four KPI cards, both floor maps, selectable bay tiles with a bay-detail panel, car/bike and EV summaries, peak hour, long-stay alerts, Entry/Exit kiosk switches, Reset Demo dialog, **Lock & return to kiosk** |
 
@@ -50,10 +51,11 @@ Entry and Allocation use **real saved data** from `ParkingService` and the
 - Directions and signage are generated from the assigned floor and zone, and the ticket
   reuses the same saved record.
 
-These screens still use `com.hilite.parking.preview.PreviewData` and show static values:
+Both kiosks pre-fill the simulated scan with the demo plate `KL 11 AB 1234`; the field is
+editable.
 
-- Demo plate for the simulated scan: `KL 11 AB 1234`.
-- Exit preview → car, **4 h 24 min**, ₹15 (2 h free allowance, ₹5/h, partial hour rounded up).
+The admin screens still use `com.hilite.parking.preview.PreviewData` and show static values:
+
 - Dashboard preview → **9 occupied / 15 available** of 24 bays, 38 entries, 29 exits,
   **1 / 4 EV bays in use**, peak hour 4 PM, long-stay samples G-07 and F1-11.
 - Demo admin PIN: **`1234`** (never shown in the UI).
@@ -123,8 +125,8 @@ paise is rejected rather than rounded. A bay is occupied **only** when an active
 references it; there is no editable occupancy flag.
 
 The persistence layer is **working and tested** and is the source of truth for the
-Entry/Allocation workflow. The Exit kiosk and the dashboard still display static preview values;
-connecting them is Phases 5–6.
+Entry, Allocation and Exit workflows. The dashboard still displays static preview values;
+connecting it is Phase 6.
 
 ### Phase 4 allocation service (connected to the kiosk)
 
@@ -146,6 +148,34 @@ instead of the kiosk. Opening the Allocation screen only reads the `Allocated` v
 it, and **Done** simply returns to Entry, so neither revisiting nor refreshing can allocate a
 second bay or create a second session.
 
+### Phase 5 exit service (connected to the kiosk)
+
+| Type | Purpose |
+|---|---|
+| `service.ExitService` | `quote(registration)`, `completeZeroFee(ExitQuote)`, `confirmPayment(ExitQuote)`. JavaFX-free; repositories, `FeeCalculator` and an optional `Clock` are injected |
+| `service.ExitQuote` | Immutable quote: session id, plate, vehicle, bay, floor, entry time, **quoted exit time (captured once)**, total duration, 120-minute free allowance, chargeable hours, hourly rate, amount due |
+| `service.ExitOutcome` | Sealed result: `Quoted(ExitQuote)`, `Completed(ExitSummary)` or `Rejected(Reason, message)` with reasons `INVALID_REGISTRATION`, `SESSION_NOT_FOUND`, `ALREADY_COMPLETED`, `STALE_QUOTE`, `PAYMENT_REQUIRED`, `NO_PAYMENT_REQUIRED` |
+| `service.ExitSummary` | Saved completion shown on the success state; `paymentId` is null exactly for a zero-fee exit |
+| `repository.ExitCompletionRepository` (+ `JdbcExitCompletionRepository`) | One connection, one transaction: conditional `UPDATE … WHERE exit_time IS NULL`, then the confirmed payment insert; commit only if both succeed, otherwise roll back |
+| `controller.ExitServiceAware` | Hand-off interface the `Navigator` uses to give the Exit screen the shared `ExitService` |
+
+Guarantees:
+
+- The fee comes only from `FeeCalculator`, using the stored entry time and the quote's own exit
+  time. Confirmation reuses that exit time and amount, so the saved fee always equals the fee
+  shown, however long the customer stays on the payment panel. A new quote reads the clock
+  again.
+- Calculating a fee, opening the payment panel and **Cancel** write nothing: the session stays
+  active and the bay stays occupied.
+- A paid exit writes the completed session **and** one `CONFIRMED` payment in the same
+  transaction, or neither. A zero-fee exit closes the session with ₹0 and creates no payment.
+- Before writing, the service re-reads the session and rejects a quote that no longer matches
+  it (`STALE_QUOTE`) or a session that is already closed (`ALREADY_COMPLETED`). The conditional
+  update and the one-confirmed-payment-per-session index stop a racing second attempt. The
+  Exit screen also disables its buttons while a request runs.
+- After an exit, the same plate reports that no active session remains. A database failure
+  shows an inline message and never a success state.
+
 ### Visual and asset notes
 
 - Kiosk: dark, cinematic translucent-glass panels, electric-blue primary actions, green/gold
@@ -164,7 +194,8 @@ second bay or create a second session.
 
 Audited 2026-10-24; Phase 1 build/launch verified 2026-10-25; Phase 2 test build and
 UI regression check verified 2026-10-25; Phase 3 persistence build and UI regression check
-verified 2026-10-26; Phase 4 allocation build, UI harness and real launch verified 2026-10-26:
+verified 2026-10-26; Phase 4 allocation build, UI harness and real launch verified 2026-10-26.
+Phase 5 was verified on a second machine (2026-10-28; see the Phase 5 notes below the table):
 
 | Requirement | Observed |
 |---|---|
@@ -177,6 +208,12 @@ verified 2026-10-26; Phase 4 allocation build, UI harness and real launch verifi
 | SQLite | Xerial `sqlite-jdbc` 3.53.4.0 (plain JDBC; no ORM) |
 | Tests | JUnit 5.11.4 + Maven Surefire 3.5.2 |
 | Maven Central | Reachable; JavaFX artifacts cached locally after the first build |
+
+Phase 5 machine: Windows 11 `10.0.26300`, Oracle Java **26.0.2.1** (`C:\Program Files\Java`),
+Maven **3.9.11** from the local Maven wrapper cache (`mvn` is not on `PATH` there), no Python.
+The build still compiles with `--release 21`. JavaFX 21.0.5 printed a non-fatal "Unsupported
+JavaFX configuration: classes were loaded from unnamed module" warning and `sun.misc.Unsafe`
+deprecation warnings under Java 26. Neither affected the run.
 
 To build on another machine:
 
@@ -194,6 +231,9 @@ mvn clean verify
 
 # Focused allocation-service tests only
 mvn -q test -Dtest=ParkingServiceTest
+
+# Focused exit, fee-quote, payment and transaction tests only
+mvn -q test -Dtest='*Exit*'
 
 # Focused persistence and registration tests only
 mvn -q test -Dtest='*Repository*,*Database*,*Registration*'
@@ -214,7 +254,26 @@ $env:JAVA_TOOL_OPTIONS = "-Dhilite.db=$env:TEMP\hilite-demo.db"
 mvn javafx:run
 ```
 
-Verified on the audited machine (Phase 1 UI, re-checked after Phases 2, 3 and 4):
+Phase 5 verification (2026-10-28):
+
+- `mvn -B clean verify` → **BUILD SUCCESS**: 50 main source files + 14 test source files,
+  **157 tests run, 0 failures, 0 errors, 0 skipped**. The 130 Phase 2–4 tests are unchanged;
+  `ExitServiceTest` adds 27.
+- `mvn javafx:run` (with `JAVA_TOOL_OPTIONS=-Dhilite.db=<temp file>`) → window **HiLITE Mall
+  Smart Parking** opened with no exception. The demo database was created outside the project,
+  no `data/` folder was created, and no `java` process remained after the launched process
+  tree was stopped.
+- A throwaway harness kept outside the project drove the real `MainApp`, `Navigator` and
+  `ExitController` against a seeded temporary database. It checked the database after each step.
+  Results: calculate → ₹10 quote; payment → **Cancel** left the session active, the bay
+  occupied and no payment; **Confirm Demo Payment**, clicked twice, wrote exactly one ₹10
+  payment and freed the bay; the same plate was then refused as already closed; an unknown
+  plate was refused; a bike exit inside 2 h closed at ₹0 with no payment; and an Entry
+  allocation followed by an immediate exit closed at ₹0. The 1600 × 900 and 1366 × 768 layouts
+  were reviewed from screenshots. The harness used `Button.fire()` and scene snapshots, not
+  physical mouse or keyboard input.
+
+Earlier verification on the audited machine (Phase 1 UI, re-checked after Phases 2, 3 and 4):
 
 - `mvn -B clean verify` → **BUILD SUCCESS**: 44 main source files + 12 test source files,
   **130 tests run, 0 failures, 0 errors, 0 skipped** (6.517 s).
@@ -248,7 +307,7 @@ cached.
 
 ---
 
-## 4. Project structure (actual, Phase 4)
+## 4. Project structure (actual, Phase 5)
 
 ```text
 Parking Kiosk/
@@ -266,12 +325,13 @@ Parking Kiosk/
 │  │  ├─ controller/                      # event handling + display only
 │  │  │  ├─ EntryController.java          # real allocation request
 │  │  │  ├─ AllocationController.java     # renders the saved allocation
-│  │  │  ├─ ExitController.java
+│  │  │  ├─ ExitController.java           # real quote, demo payment, completion
 │  │  │  ├─ AdminPinController.java
 │  │  │  ├─ DashboardController.java
 │  │  │  ├─ KioskHeaderController.java
 │  │  │  ├─ NavigatorAware.java
-│  │  │  └─ ServiceAware.java             # service hand-off from Navigator
+│  │  │  ├─ ServiceAware.java             # parking service hand-off from Navigator
+│  │  │  └─ ExitServiceAware.java         # exit service hand-off from Navigator
 │  │  ├─ model/                           # Phase 2 domain (no JavaFX/SQL)
 │  │  │  ├─ VehicleType.java
 │  │  │  ├─ KioskMode.java
@@ -284,7 +344,11 @@ Parking Kiosk/
 │  │  ├─ service/
 │  │  │  ├─ FeeCalculator.java            # frozen tariff, pure function
 │  │  │  ├─ AllocationOutcome.java        # Allocated / Rejected result type
-│  │  │  └─ ParkingService.java           # entry allocation use case
+│  │  │  ├─ ParkingService.java           # entry allocation use case
+│  │  │  ├─ ExitService.java              # exit quote + completion use case
+│  │  │  ├─ ExitQuote.java                # frozen fee quote
+│  │  │  ├─ ExitOutcome.java              # Quoted / Completed / Rejected
+│  │  │  └─ ExitSummary.java              # saved completion for the success state
 │  │  ├─ repository/                      # Phase 3 persistence (plain JDBC)
 │  │  │  ├─ Database.java                 # connection + PRAGMAs
 │  │  │  ├─ DatabaseInitializer.java      # transactional schema + seed
@@ -293,15 +357,16 @@ Parking Kiosk/
 │  │  │  ├─ ParkingSessionRepository.java
 │  │  │  ├─ PaymentRepository.java
 │  │  │  ├─ SettingsRepository.java
+│  │  │  ├─ ExitCompletionRepository.java # atomic exit boundary
 │  │  │  └─ jdbc/
 │  │  │     ├─ SqlCodec.java              # UTC text + paise conversion
+│  │  │     ├─ JdbcExitCompletionRepository.java  # one-transaction close + payment
 │  │  │     ├─ JdbcParkingSlotRepository.java
 │  │  │     ├─ JdbcParkingSessionRepository.java
 │  │  │     ├─ JdbcPaymentRepository.java
 │  │  │     └─ JdbcSettingsRepository.java
-│  │  ├─ preview/                         # PHASE 1 PREVIEW DATA ONLY (exit, dashboard, PIN)
+│  │  ├─ preview/                         # PHASE 1 PREVIEW DATA ONLY (dashboard, PIN)
 │  │  │  ├─ PreviewData.java              # single source of sample values
-│  │  │  ├─ PreviewExitQuote.java
 │  │  │  ├─ PreviewBay.java
 │  │  │  ├─ PreviewLongStay.java
 │  │  │  ├─ PreviewStats.java
@@ -328,6 +393,8 @@ Parking Kiosk/
    ├─ service/FeeCalculatorTest.java
    ├─ service/ParkingServiceTest.java      # 24 allocation tests
    ├─ service/ServiceTestSupport.java
+   ├─ service/ExitServiceTest.java         # 27 exit, payment and rollback tests
+   ├─ service/ExitTestSupport.java
    └─ util/RegistrationUtilTest.java
 ```
 
@@ -335,21 +402,21 @@ Parking Kiosk/
 uses its own temporary SQLite file under JUnit's `@TempDir`. Deleting `data/` resets the parking
 records; it is not tracked by version control.
 
-Planned additions (not present yet): exit/payment workflow services, statistics and long-stay
-services, admin reset, and the dashboard/exit controller wiring.
+Planned additions (not present yet): statistics and long-stay services, admin reset, and the
+dashboard controller wiring.
 
 ---
 
 ## 5. Planned final behaviour (Phases 5–7)
 
-This section describes the completed product. Entry scanning and bay allocation already work as
-described; fees, payment, dashboard statistics and reset are still ahead.
+This section describes the completed product. Entry, allocation, fees, demo payment and exit
+already work as described; dashboard statistics and reset are still ahead.
 
 - Simulate entry scanning for **Car** or **Bike / Scooter**, with optional **EV charging**.
 - Allocate a real bay from a fictional 24-bay, two-floor layout using deterministic rules.
   *(Implemented in Phase 4.)*
 - Quote parking fees using frozen rules, take a **demo payment** when due, close the
-  session, and free the bay.
+  session, and free the bay. *(Implemented in Phase 5.)*
 - Show an admin dashboard derived from persisted sessions: occupancy, availability,
   entry/exit counts, car/bike splits, EV usage, both floor maps, peak entry hour, and
   long-stay alerts (> 12 hours).
@@ -362,7 +429,7 @@ described; fees, payment, dashboard statistics and reset are still ahead.
 | Ground | G-01 … G-12 | 01–06 = Zone A, 07–12 = Zone B | G-03, G-08 |
 | First | F1-01 … F1-12 | 01–06 = Zone A, 07–12 = Zone B | F1-05, F1-12 |
 
-### Fee rules (implemented in the Phase 2 service; not yet wired to the UI)
+### Fee rules (Phase 2 calculator, used by the Exit kiosk since Phase 5)
 
 - Car ₹5 per chargeable hour; Bike / Scooter ₹2 per chargeable hour.
 - First 120 elapsed minutes are free.
@@ -370,7 +437,9 @@ described; fees, payment, dashboard statistics and reset are still ahead.
 - Examples: 2 h 20 min car = ₹5; 3 h 10 min bike = ₹4; 4 h 24 min car = ₹15.
 
 These rules are implemented by `com.hilite.parking.service.FeeCalculator` and covered by
-JUnit tests. The Phase 1 preview screens still show static fee values until Phase 5.
+JUnit tests. `ExitService` calls it with the stored entry time and the quote's exit time; no
+other class does fee arithmetic. Time is billed in whole elapsed seconds, so 120 min + 500 ms is
+still free while 120 min + 1 s is charged one hour.
 
 ### Demo authentication and payment
 
@@ -381,10 +450,10 @@ JUnit tests. The Phase 1 preview screens still show static fee values until Phas
 
 ---
 
-## 6. Demonstration script (Phase 4)
+## 6. Demonstration script (Phase 5)
 
-Entry and allocation are real and persisted. Steps 6–7 still use preview data for the
-dashboard, exit and PIN screens.
+Entry, allocation and exit are real and persisted. Steps 8–9 still use preview data for the
+dashboard and PIN screens.
 
 1. Launch with `mvn javafx:run`; the Entry kiosk opens with a simulated scan in progress. The
    first launch creates `data/hilite-parking.db` and seeds the 24-bay layout.
@@ -399,12 +468,20 @@ dashboard, exit and PIN screens.
    re-enabled. Only one session exists.
 5. Optional: open `data/hilite-parking.db` in any SQLite browser and show the
    `parking_sessions` row that matches the ticket.
-6. Click the lock button (top-right) or press `Ctrl+Shift+A`; enter `1234` on the keypad or
+6. Switch to the Exit kiosk (lock button → `1234` → **Exit Kiosk**). After the simulated scan,
+   type the plate from step 2 and press **Calculate Parking Fee**. A fresh stay is inside the
+   free 120 minutes, so the fee is **₹0** and the button reads **Complete Exit**. Press it; the
+   success state shows *Parking Session Closed* and no payment is recorded. **Done** returns to
+   the scan state, and calculating the same plate again reports that the session is closed.
+7. To show a paid exit, use a vehicle that has been parked for more than 2 h, or a database
+   prepared beforehand with an older session. **Pay & Exit** opens the demo payment panel.
+   **Cancel** returns to the fee screen and the session stays open. **Confirm Demo Payment**
+   closes the session and records one confirmed payment for the amount shown. No real money is
+   collected.
+8. Click the lock button (top-right) or press `Ctrl+Shift+A`; enter `1234` on the keypad or
    keyboard. Enter a wrong PIN first if you want to show the inline error. The dashboard is
-   still preview data and does **not** count the session created in step 3.
-7. On the Dashboard, switch to **Exit Kiosk** and show the preview fee/payment states, then
-   return and show that **Reset Demo** is still a confirmation-only preview. Lock back to the
-   kiosk.
+   still preview data and does **not** count the sessions above.
+9. Show that **Reset Demo** is still a confirmation-only preview, then lock back to the kiosk.
 
 To start a fresh demonstration database, close the app and delete `data/hilite-parking.db`
 (the next launch recreates the layout). Phase 6 adds a proper admin reset instead.
@@ -435,8 +512,12 @@ Design reference mapping:
 
 ## 8. Assumptions and limitations
 
-- **Entry and Allocation are connected to SQLite.** Exit, Admin PIN and Dashboard still render
-  Phase 1 preview values, and their numbers do not change when you enter or leave the kiosk.
+- **Entry, Allocation and Exit are connected to SQLite.** Admin PIN and Dashboard still render
+  Phase 1 preview values, and their numbers do not change when vehicles enter or leave.
+- Durations are displayed in whole minutes, while billing uses whole seconds. A stay of
+  5 h 00 min 40 s therefore shows **5 h** but bills 4 chargeable hours (3 h 00 min 40 s rounded
+  up). The amount is correct; only the displayed duration is truncated.
+- Payments are demonstration records only. No gateway, card, UPI or bank is contacted.
 - The allocation screen only displays a saved record. Occupancy, duplicate-plate and capacity
   rules are enforced by `ParkingService`, and the partial unique indexes remain the final
   safeguard; the dashboard preview still does not reflect sessions created at the kiosk.
@@ -448,16 +529,16 @@ Design reference mapping:
   `admin_settings`, but the current screen still compares against the preview constant.
 - Fictional layout and zones; all bays accept both vehicle categories.
 - No runtime photography; the garage scene is vector/gradient fallback art.
-- Preview timestamps are generated from the current local time. Real parking timestamps are
-  stored as fixed ISO-8601 UTC text and converted to local time only for display.
+- Parking timestamps are stored as fixed ISO-8601 UTC text and converted to local time only
+  for display.
 - The Phase 2 domain layer uses `Instant` for event timestamps (UTC), `BigDecimal` for rupee
   money, and whole-second fee precision with documented sub-second truncation.
-- Entry and Allocation use `model.VehicleType`; `preview.VehicleType` remains for the exit and
-  dashboard screens. `Navigator.KioskMode` is still the UI mode type (Phase 6).
+- Entry, Allocation and Exit use `model.VehicleType`; `preview.VehicleType` remains for the
+  dashboard screen. `Navigator.KioskMode` is still the UI mode type (Phase 6).
 - `ParkingSlot` intentionally has no occupancy field. Occupancy is derived from active
   sessions, not from a mutable flag.
 - `MainApp` initializes the SQLite schema once at startup, so the first real launch creates
-  `data/hilite-parking.db`. There is still no admin reset, exit, or payment workflow.
+  `data/hilite-parking.db`. There is still no admin reset (Phase 6).
 - Click/key injection was unavailable in the verification environment; UI evidence was
   produced by driving the real scene graph (button `fire()`, field updates, scene snapshots)
   rather than physical mouse clicks.
@@ -473,8 +554,8 @@ Design reference mapping:
 | 2 | Domain models and fee calculator + tests | **Complete** |
 | 3 | SQLite schema, repositories, initialization, persistence tests | **Complete** |
 | 4 | Entry, allocation, confirmation wired to real data | **Complete** |
-| 5 | Exit, fee quote, demo payment, bay release | Not started |
+| 5 | Exit, fee quote, demo payment, bay release | **Complete** |
 | 6 | Admin PIN, dashboard, modes, statistics, alerts, reset | Not started |
 | 7 | Integration, visual refinement, release verification | Not started |
 
-Phase 4 stops here. Phase 5 begins only on explicit request.
+Phase 5 stops here. Phase 6 begins only on explicit request.
