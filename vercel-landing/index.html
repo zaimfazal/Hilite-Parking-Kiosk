@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HiLITE Mall Smart Parking</title>
+<meta name="description" content="College demonstration of a smart parking system for HiLITE Mall: entry kiosk, bay allocation, exit with demo payment, and a live admin dashboard.">
+<style>
+  :root {
+    --ink: #070b11;
+    --text: #f4f7fb;
+    --text-2: #aab6c6;
+    --text-3: #8b98aa;
+    --blue: #2f6bff;
+    --blue-2: #1f5ae6;
+    --gold: #d9be86;
+    --line: rgba(255, 255, 255, .14);
+    --glass: rgba(255, 255, 255, .06);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background:
+      radial-gradient(ellipse at 18% 8%, rgba(214, 176, 112, .20), transparent 55%),
+      radial-gradient(ellipse at 88% 30%, rgba(59, 130, 246, .16), transparent 50%),
+      linear-gradient(160deg, #121b26, #0a1019 50%, #05080d);
+    background-color: var(--ink);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+    line-height: 1.5;
+  }
+  main { max-width: 1040px; margin: 0 auto; padding: 48px 20px 40px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand strong { font-size: 26px; letter-spacing: .01em; }
+  .brand strong span { font-weight: 400; color: #c7d1dd; }
+  .brand small { padding-left: 14px; border-left: 1px solid var(--line); color: #b9c5d4;
+    font-size: 11px; font-weight: 700; letter-spacing: .28em; }
+  .eyebrow { margin: 72px 0 10px; color: var(--gold); font-size: 12px; font-weight: 700;
+    letter-spacing: .3em; text-transform: uppercase; }
+  h1 { margin: 0; font-size: clamp(38px, 7vw, 64px); font-weight: 300; line-height: 1.05; }
+  .lead { max-width: 620px; margin: 18px 0 0; color: var(--text-2); font-size: 17px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 34px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 56px;
+    padding: 0 26px; border-radius: 13px; font-size: 16px; font-weight: 700;
+    text-decoration: none; transition: transform .15s ease, background .15s ease; }
+  .btn:focus-visible { outline: 3px solid #4dd6ff; outline-offset: 3px; }
+  .btn:hover { transform: translateY(-1px); }
+  .primary { background: linear-gradient(90deg, var(--blue), var(--blue-2)); color: #fff;
+    box-shadow: 0 6px 18px rgba(31, 90, 230, .34); }
+  .secondary { background: var(--glass); color: var(--text); border: 1px solid var(--line); }
+  .note { margin-top: 16px; color: var(--text-3); font-size: 14px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px;
+    margin-top: 64px; }
+  .card { padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--glass); }
+  .card h2 { margin: 0 0 6px; font-size: 16px; }
+  .card p { margin: 0; color: var(--text-2); font-size: 14px; }
+  footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, .08);
+    color: var(--text-3); font-size: 13px; }
+  @media (prefers-reduced-motion: reduce) { .btn { transition: none; } .btn:hover { transform: none; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">
+    <strong>HiLITE <span>MALL</span></strong>
+    <small>SMART PARKING</small>
+  </div>
+
+  <p class="eyebrow">A greater tomorrow together</p>
+  <h1>Park smart.<br>Shop easy.</h1>
+  <p class="lead">A college demonstration of a smart parking system for HiLITE Mall. It simulates
+    number-plate scanning, allocates a real bay with floor and zone directions, quotes fees at
+    exit with a demo payment, and gives administrators a live dashboard.</p>
+
+  <div class="actions">
+    <a class="btn primary" href="https://hilite-mall-parking.onrender.com/">Open the parking kiosk</a>
+    <a class="btn secondary" href="https://hilite-mall-parking.onrender.com/admin">Admin dashboard</a>
+  </div>
+  <p class="note">The app runs on a free server that sleeps when idle, so the first visit can take
+    about a minute to wake up. Demo data starts fresh after each restart.
+    Demo admin PIN: 1234.</p>
+
+  <section class="grid" aria-label="Features">
+    <div class="card"><h2>Vehicle entry</h2><p>Simulated plate scan, car or bike, EV charging request, and an instant bay allocation.</p></div>
+    <div class="card"><h2>Directions and ticket</h2><p>Floor, bay and zone signage with a simulated parking ticket.</p></div>
+    <div class="card"><h2>Exit and fees</h2><p>First 2 hours free; then ₹5 per hour for cars and ₹2 for bikes, with a demo payment.</p></div>
+    <div class="card"><h2>Live dashboard</h2><p>Occupancy, floor maps, peak hour, long-stay alerts, kiosk mode and demo reset.</p></div>
+  </section>
+
+  <footer>Demonstration only. There is no real camera, printer or payment gateway, and no real
+    money is collected. Built in Java with Spring Boot and Vaadin.</footer>
+</main>
+</body>
+</html>

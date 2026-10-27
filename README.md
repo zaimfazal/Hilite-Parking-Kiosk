@@ -236,8 +236,28 @@ docker compose up --build -d
   4. Restart the container.
   5. Confirm the session is still there.
 - **Deploying:** any platform that runs a JAR or a container works, provided it gives the
-  app **one instance** with a **persistent volume** at `/data`. No public deployment has been
-  made; that step is yours.
+  app **one instance**. Data persists only with a **persistent volume** at `/data`.
+
+### Free hosting on Render
+
+`render.yaml` is a Render Blueprint: free plan, Docker runtime, Singapore region, `main`
+branch, health check `/actuator/health`, and JVM flags sized for 512 MB of memory.
+
+1. Sign in to Render with GitHub and give it access to this repository.
+2. Open <https://dashboard.render.com/blueprint/new?repo=https://github.com/zaimfazal/Hilite-Parking-Kiosk>
+   and approve the blueprint.
+3. Render builds the Dockerfile and serves the app at `https://<service-name>.onrender.com`.
+
+**Free-plan limits:**
+
+- The app sleeps after 15 minutes idle; the first visit then takes about a minute.
+- There is no persistent disk, so every sleep, restart or redeploy starts with an empty
+  24-bay car park.
+- For a demo, open the site a minute before presenting.
+- For data that survives, use a paid plan with a disk at `/data`.
+
+**Vercel:** Vercel cannot host this app. It has no long-running Java server and no persistent
+filesystem. `vercel-landing/` is a small static page for Vercel that links to the Render app.
 
 ---
 
