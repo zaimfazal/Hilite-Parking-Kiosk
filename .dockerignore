@@ -1,0 +1,48 @@
+# Keep the build context small. The image build only needs pom.xml, src/ and any
+# Vaadin-generated root frontend files (package*.json, vite.config.ts, tsconfig.json, types.d.ts).
+
+# Build output (including per-agent / per-run build dirs such as target-Q)
+target
+target*/
+**/target
+
+# Node / Vaadin frontend tooling (regenerated during the image build)
+node_modules
+**/node_modules
+.pnpm-store
+src/main/bundles
+vite.generated.ts
+vite.config.ts.timestamp-*
+
+# Local SQLite data - never bake a database into the image
+data
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/*.db-journal
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+
+# VCS, IDE and OS clutter
+.git
+.gitignore
+.idea
+.vscode
+*.iml
+.DS_Store
+Thumbs.db
+*.log
+
+# Not needed to build or run (design mock-ups and project documents)
+Design References
+*.md
+.claude
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+docker-compose.yml
+compose.yaml

@@ -11,15 +11,20 @@ must not drift are summarized here and expanded in `README.md` / `PHASE_PLAN.md`
 | Item | Value |
 |---|---|
 | Project name | HiLITE Mall Smart Parking |
-| Type | Single-desktop JavaFX demonstration application (college MVP) |
+| Type | Browser-based Java web application (college MVP); Phases 1–5 were a JavaFX desktop app |
 | Purpose | Simulated entry/exit kiosks + admin dashboard for a fictional 24-bay mall car park |
 | Audience | Teachers/demonstrators; one or a few live demonstrations |
-| Root package (planned) | `com.hilite.parking` |
-| Working directory | `C:\Users\Zaim\Desktop\Parking Kiosk` |
+| Root package | `com.hilite.parking` |
+| Repository | `Hilite-Parking-Kiosk` (Git; GitHub remote). No machine-specific paths in code. |
 
-**Out of scope:** real ANPR camera integration, real payment gateways, cloud hosting,
-Spring Boot, REST APIs, microservices, web frontends, user accounts, multi-tenant logic,
+**Out of scope:** real ANPR camera integration, real payment gateways, separate JavaScript
+frontends (React/Angular/Vue), public REST APIs, microservices, user accounts / identity
+platforms, multi-tenant logic, multiple application instances on one SQLite file,
 vehicle-size rules, additional vehicle categories, additional floors/bays, report exports.
+
+**Architecture change (2026-10-28).** The brief for Phases 6–7 superseded the original
+desktop-only scope: the application is now Spring Boot + Vaadin, with Java remaining the
+primary language for UI, services, rules and persistence. See `AUDIT_REPORT.md` §6.
 
 This is a demonstration. Authentication is a demo PIN, payments are simulated, and the
 parking layout is fictional. The UI must say so where relevant.
@@ -31,18 +36,22 @@ parking layout is fictional. The UI must say so where relevant.
 | Layer | Choice |
 |---|---|
 | Language | Java 21 |
-| UI | JavaFX 21 with FXML + JavaFX CSS |
-| Build | Maven, pinned dependency versions |
-| Database | SQLite via JDBC (`org.xerial:sqlite-jdbc`) |
-| Tests | JUnit 5 (Jupiter) |
+| Web runtime | Spring Boot 4.1.2 (embedded Tomcat, Actuator health) |
+| UI | Vaadin Flow 25.3.4 (`vaadin-core`, free components), views written in Java; browser CSS |
+| Build | Maven, pinned versions (Spring Boot parent manages JUnit/Surefire/compiler) |
+| Database | SQLite via JDBC (`org.xerial:sqlite-jdbc` 3.53.4.0), WAL mode, single instance |
+| Tests | JUnit (Spring Boot managed), `browserless-test-spring` for view logic |
 | Time injection | `java.time.Clock` for testable time-based services |
+| Packaging | Executable Spring Boot JAR; Dockerfile with a `/data` volume |
 
-- Versions are pinned in `pom.xml`. No SNAPSHOT or dynamic version ranges.
-- The JavaFX Maven plugin is the documented launch path; tests must run headless
-  (no JavaFX toolkit required for unit and persistence tests).
-- A compatible JavaFX version for the installed JDK 21 must be confirmed by an actual
-  compile/run in Phase 1. Do not assume runtime compatibility.
-- No dependency may be added unless it is genuinely needed and justified in the phase report.
+- Versions are pinned. No SNAPSHOT or dynamic version ranges. Framework versions are chosen
+  from official compatibility tables (Vaadin 25.3: Java 21+, Spring Boot 4.1+, Node 24+).
+- Business code (`model`, `service`, `repository`, `util/FormatUtil`, `util/RegistrationUtil`)
+  must not import Spring, Vaadin or any UI type; Spring wiring lives in `config`, UI in `web`.
+- Tests must run headless; no browser is required.
+- No dependency may be added unless it is genuinely needed and justified.
+- No separate JS frontend. Custom JavaScript only when a browser capability cannot be handled by
+  Vaadin, and documented when used.
 
 ---
 
@@ -79,31 +88,35 @@ The project runs in Phase 0–7 as defined in `PHASE_PLAN.md`.
 
 ## 4. Architecture rules
 
-Planned package layout:
+Package layout:
 
 ```
 src/main/java/com/hilite/parking/
-  App.java                 // JavaFX entry point, app wiring
-  model/                   // records/classes/enums: vehicle, bay, session, payment, admin stats
-  repository/              // JDBC SQL, one concern per repository
-  service/                 // allocation, fees, exit workflow, statistics, reset
-  controller/              // JavaFX event handling only
-  util/                    // small justified helpers (DB path, validation, formatting)
+  HiliteParkingApplication.java  // Spring Boot entry point + Vaadin app shell
+  config/                  // Spring wiring of the plain-Java business layer, typed properties
+  model/                   // records/enums: vehicle, bay, session, payment
+  repository/              // JDBC SQL, one concern per repository (+ jdbc/ implementations)
+  service/                 // allocation, fees, exit workflow, admin access, statistics, alerts, reset
+  health/                  // Actuator health indicator for the database
+  web/                     // Vaadin views (kiosk/, admin/), shared UI (ui/), admin guard (security/)
+  util/                    // FormatUtil (display), RegistrationUtil (plate key)
 src/main/resources/
-  fxml/                    // one FXML file per screen
-  css/                     // shared tokens + kiosk + dashboard stylesheets
-  images/                  // approved bundled assets
+  application.properties   // hilite.* settings, overridable by environment variables
+  META-INF/resources/      // browser CSS (styles.css) — the design system
 src/test/java/com/hilite/parking/
   ...                      // JUnit tests, temporary databases only
-data/                      // runtime SQLite database (gitignored)
+data/                      // local runtime SQLite database (gitignored); /data volume in Docker
 ```
 
 Rules:
 
-- Controllers handle UI events and display state. They do **not** contain SQL or fee math.
+- Views handle UI events and display state. They do **not** contain SQL or fee math, and never
+  inject a repository: they call application services. Admin views go through
+  `web.security.AdminOperations`, which enforces the server-side unlock check.
 - Services enforce business rules and own workflow boundaries/transactions.
 - Repositories encapsulate SQL only. Prepared statements only. No string-concatenated SQL values.
-- Models are plain Java. No JavaFX imports in `model`, `service`, `repository`, or fee logic.
+- Models are plain Java. No UI or framework imports (Vaadin, Spring) in `model`, `service`,
+  `repository`, or fee logic.
 - Fee arithmetic lives in exactly one service, uses `BigDecimal` for money, and is shared by
   the exit screen, dashboard, and tests.
 - UI formatting (₹, dates, durations) may live in a small `util` formatter used everywhere.
@@ -154,14 +167,18 @@ hour, peak hour (graceful on empty data).
 restores exactly 24 bays (with the 4 charging flags), frees all bays, resets kiosk mode to
 Entry, refreshes open views. Never on normal startup; transaction-safe; schema preserved.
 
-**Kiosk modes:** Start in Entry. Admin can switch Entry/Exit. Mode is UI state only; it must
-not modify parking records. Kiosk mode may persist in `admin_settings`.
+**Kiosk modes:** Start in Entry. Admin can switch Entry/Exit. The mode persists in
+`admin_settings.kiosk.mode` (invalid or missing → Entry) and decides what the kiosk home page
+(`/`) shows; changing it must not modify parking records.
 
 ---
 
 ## 6. Database rules
 
-- SQLite file: `data/hilite-parking.db` (relative to the app working directory), gitignored.
+- SQLite file: `hilite.db-path` / `HILITE_DB_PATH` (default `data/hilite-parking.db`,
+  relative to the working directory; `/data/hilite-parking.db` on a volume in Docker),
+  gitignored. WAL journal mode; write transactions use `BEGIN IMMEDIATE`.
+- One application instance per database file. SQLite is not shared between instances.
 - Enable `PRAGMA foreign_keys = ON` per connection. Use sensible constraints:
   primary keys, foreign keys, non-null fields, and partial unique indexes for
   one active session per plate and one active session per bay.
@@ -173,7 +190,7 @@ not modify parking records. Kiosk mode may persist in `admin_settings`.
 - Timestamps stored in a single documented format (ISO-8601 UTC recommended) and converted
   for display using the local zone.
 - The demo PIN default is `1234`, stored in `admin_settings` (demo auth only; never shown in UI).
-- No SQL in FXML/controllers.
+- No SQL in views.
 
 ---
 
@@ -182,9 +199,11 @@ not modify parking records. Kiosk mode may persist in `admin_settings`.
 The full visual contract is in `UI_GUIDE.md`. Mandatory points:
 
 - Customer kiosk: premium dark cinematic mall experience with frosted-glass panels
-  (simulated in JavaFX CSS), electric-blue primary actions, restrained green/gold accents.
+  (browser CSS), electric-blue primary actions, restrained green/gold accents.
 - Admin: practical light workspace, dark navy sidebar, restrained blue actions.
-- Every interactive element is a real JavaFX control. No screenshot-as-UI.
+- Every interactive element is a real Vaadin component built in Java. No screenshot-as-UI.
+- Accessibility: labelled fields, accessible names on icon-only buttons, visible keyboard
+  focus, inline errors announced (`role="alert"`), no user input rendered as HTML.
 - No remote images at runtime. If a suitable photo asset is unavailable, use a refined
   gradient/vector fallback; never block the build on imagery.
 - Consistent typography, spacing, radii, and status colors across screens.
@@ -192,9 +211,8 @@ The full visual contract is in `UI_GUIDE.md`. Mandatory points:
 - Status must never rely on color alone (include text labels/icon glyphs).
 - Primary kiosk actions ~56–72 px high at 1920×1080, scaling sensibly down to ~1366×768.
 - Correct spelling and readable contrast in every state. No overflow or clipped text.
-- Minimal deliberate animation only; respect that JavaFX CSS has no `backdrop-filter`,
-  `letter-spacing`, or arbitrary blur. Frosted glass is simulated with translucent fills,
-  borders, shadows, and a background scrim.
+- Minimal deliberate animation only. Browser CSS may use `backdrop-filter` and
+  `letter-spacing`; keep a translucent-fill fallback.
 - Keep the five required screens; routine errors stay inline, not on extra screens.
 - Do not add unrequested features, charts, or decoration.
 - Preview-only data (Phase 1) must be clearly isolated and removed from production
@@ -213,7 +231,10 @@ The full visual contract is in `UI_GUIDE.md`. Mandatory points:
   long-stay 12h boundary, statistics on empty and populated data, and reset effects.
 - Workflow tests must assert no orphan active sessions or double releases.
 - Never weaken a test to make code pass. Fix the code or document the blocker.
-- Final phase: full suite green (`mvn clean verify`) plus a manual UI lifecycle check.
+- View logic is tested headless with `browserless-test-spring`; deployment concerns (startup
+  with a configured database path, health endpoint, restart persistence, admin authorization)
+  have their own tests.
+- Final phase: full suite green (`mvn clean verify`) plus a browser lifecycle check.
 
 ---
 
@@ -222,18 +243,19 @@ The full visual contract is in `UI_GUIDE.md`. Mandatory points:
 - Only bundle images/fonts that are free to use and document their origin.
 - The five supplied images in `Design References/` are **design mockups**, not runtime UI.
   Do not use a whole mockup as a screen, and do not crop mockup UI into assets.
-- No remote URLs in CSS/FXML at runtime.
+- No remote URLs (images, fonts, scripts) in CSS or views at runtime.
 - If photo assets are unavailable, ship the gradient fallback defined in `UI_GUIDE.md`.
-- Iconography: prefer JavaFX shapes, simple inline SVG paths, or a bundled permissive icon
-  font. Do not add a heavyweight icon library without justification.
+- Iconography: simple inline SVG paths built in Java. Do not add an icon library without
+  justification.
 
 ---
 
 ## 10. Version control hygiene
 
-- `.gitignore` excludes `target/`, `data/`, database files, logs, local config, IDE files.
-- The directory is currently **not** a Git repository. Do not run `git init`, commit, reset,
-  or any destructive Git command without explicit authorization.
+- `.gitignore` excludes `target/`, `data/`, database files, Vaadin-generated frontend files,
+  `node_modules/`, logs, local config (except `.env.example`), IDE files.
+- The project is a Git repository with a GitHub remote. Commit, push, merge or run any
+  destructive Git command only when the owner asks.
 - Design references are kept in the repo.
 - Phase reports must list every created/modified file.
 

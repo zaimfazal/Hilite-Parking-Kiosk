@@ -10,6 +10,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -106,15 +107,23 @@ public final class JdbcPaymentRepository implements PaymentRepository {
     }
 
     private static Payment mapRow(ResultSet results) throws SQLException {
+        String paymentId = results.getString("payment_id");
+        String sessionId = results.getString("session_id");
+        long amountPaise = results.getLong("amount_paise");
+        String status = results.getString("status");
         String confirmedText = results.getString("confirmed_at");
-        Instant confirmedAt =
-                confirmedText == null ? null : SqlCodec.parseInstant(confirmedText);
 
-        return new Payment(
-                results.getString("payment_id"),
-                results.getString("session_id"),
-                SqlCodec.fromPaise(results.getLong("amount_paise")),
-                PaymentStatus.valueOf(results.getString("status")),
-                confirmedAt);
+        try {
+            Instant confirmedAt =
+                    confirmedText == null ? null : SqlCodec.parseInstant(confirmedText);
+            return new Payment(
+                    paymentId,
+                    sessionId,
+                    SqlCodec.fromPaise(amountPaise),
+                    PaymentStatus.valueOf(status),
+                    confirmedAt);
+        } catch (DateTimeException | IllegalArgumentException | NullPointerException corrupt) {
+            throw SqlCodec.corruptRow("payments", paymentId, corrupt);
+        }
     }
 }

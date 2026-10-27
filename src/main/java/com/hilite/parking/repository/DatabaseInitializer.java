@@ -22,7 +22,8 @@ import java.util.Set;
  * Creates the SQLite schema, seeds the fixed 24-bay layout, and installs demo settings.
  *
  * <p><strong>One transaction.</strong> All schema, seed, and validation work runs on a single
- * connection with auto-commit disabled. SQLite makes DDL transactional, so a failure anywhere
+ * connection inside one {@code BEGIN IMMEDIATE} transaction (the write lock is taken up front).
+ * SQLite makes DDL transactional, so a failure anywhere
  * (including a failed validation) rolls the whole unit of work back: either the database is
  * fully initialized, or it is left exactly as it was. A rollback failure is attached to the
  * original exception as a suppressed exception so the primary diagnostic is not lost.</p>
@@ -34,8 +35,11 @@ import java.util.Set;
  * exist, they are read and compared with the frozen expected layout instead of being repaired
  * or replaced; any mismatch is reported and the transaction is rolled back.</p>
  *
- * <p>This class performs no UI work and no fee logic. It only owns database creation and the
- * one-time seed.</p>
+ * <p><strong>Demo reset.</strong> {@link #resetDemoData()} is the only operation here that
+ * deletes data. It is an explicit admin action, never part of startup, and it is atomic.</p>
+ *
+ * <p>This class performs no UI work and no fee logic. It only owns database creation, the
+ * one-time seed, and the demo reset.</p>
  */
 public final class DatabaseInitializer {
 
@@ -65,7 +69,14 @@ public final class DatabaseInitializer {
             VALUES (?, ?)
             """;
 
-    private static final List<String> SCHEMA_STATEMENTS = List.of(
+    private static final String UPSERT_SETTING_SQL = """
+            INSERT INTO admin_settings (setting_key, setting_value)
+            VALUES (?, ?)
+            ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value
+            """;
+
+    /** Tables first: the friendly column check must run before any index refers to a column. */
+    private static final List<String> TABLE_STATEMENTS = List.of(
             """
             CREATE TABLE IF NOT EXISTS parking_slots (
                 slot_id     TEXT PRIMARY KEY,
@@ -92,6 +103,27 @@ public final class DatabaseInitializer {
             )
             """,
             """
+            CREATE TABLE IF NOT EXISTS payments (
+                payment_id    TEXT PRIMARY KEY,
+                session_id    TEXT NOT NULL REFERENCES parking_sessions(session_id),
+                amount_paise  INTEGER NOT NULL CHECK (amount_paise >= 0),
+                status        TEXT NOT NULL CHECK (status IN ('PENDING', 'CONFIRMED')),
+                confirmed_at  TEXT CHECK (confirmed_at IS NULL OR length(confirmed_at) = 30),
+                CHECK ((status = 'CONFIRMED' AND confirmed_at IS NOT NULL)
+                    OR (status = 'PENDING' AND confirmed_at IS NULL))
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS admin_settings (
+                setting_key   TEXT PRIMARY KEY CHECK (length(trim(setting_key)) > 0),
+                setting_value TEXT NOT NULL
+            )
+            """
+    );
+
+    /** Indexes, created only after {@link #verifySchema} has accepted the existing tables. */
+    private static final List<String> INDEX_STATEMENTS = List.of(
+            """
             CREATE UNIQUE INDEX IF NOT EXISTS ux_sessions_active_registration
                 ON parking_sessions(registration) WHERE exit_time IS NULL
             """,
@@ -104,28 +136,11 @@ public final class DatabaseInitializer {
                 ON parking_sessions(entry_time)
             """,
             """
-            CREATE TABLE IF NOT EXISTS payments (
-                payment_id    TEXT PRIMARY KEY,
-                session_id    TEXT NOT NULL REFERENCES parking_sessions(session_id),
-                amount_paise  INTEGER NOT NULL CHECK (amount_paise >= 0),
-                status        TEXT NOT NULL CHECK (status IN ('PENDING', 'CONFIRMED')),
-                confirmed_at  TEXT CHECK (confirmed_at IS NULL OR length(confirmed_at) = 30),
-                CHECK ((status = 'CONFIRMED' AND confirmed_at IS NOT NULL)
-                    OR (status = 'PENDING' AND confirmed_at IS NULL))
-            )
-            """,
-            """
             CREATE INDEX IF NOT EXISTS ix_payments_session_id ON payments(session_id)
             """,
             """
             CREATE UNIQUE INDEX IF NOT EXISTS ux_payments_confirmed_session
                 ON payments(session_id) WHERE status = 'CONFIRMED'
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS admin_settings (
-                setting_key   TEXT PRIMARY KEY CHECK (length(trim(setting_key)) > 0),
-                setting_value TEXT NOT NULL
-            )
             """
     );
 
@@ -157,11 +172,19 @@ public final class DatabaseInitializer {
      * Creates the schema and seeds the layout/settings, or validates an existing database.
      *
      * <p>The parent directory of the database file is created first when necessary. Then one
-     * transaction performs schema creation, schema verification, layout seeding or validation,
-     * and settings seeding. Nothing is committed unless every step succeeds.</p>
+     * {@code BEGIN IMMEDIATE} transaction creates any missing tables, verifies the required
+     * columns of existing tables (before any index refers to them, so an old file gets the
+     * friendly "missing required column(s)" message), creates the indexes, seeds or validates
+     * the layout, and seeds the settings. Nothing is committed unless every step succeeds.</p>
+     *
+     * <p>After a successful commit the file is switched to {@code journal_mode=WAL} and the
+     * result of the pragma is verified. The journal mode cannot change inside a transaction,
+     * and doing it only after a successful commit means a rejected (incompatible) file is left
+     * exactly as it was. WAL is persistent, so this is a no-op on later starts.</p>
      *
      * @throws DataAccessException if the directory cannot be created, SQL fails, the existing
-     *                             schema is incompatible, or the existing layout is invalid
+     *                             schema is incompatible, the existing layout is invalid, or
+     *                             WAL mode cannot be enabled
      */
     public void initialize() {
         createDatabaseDirectory();
@@ -169,14 +192,19 @@ public final class DatabaseInitializer {
         Path file = database.file().toAbsolutePath();
         try (Connection connection = database.openConnection()) {
             String step = "starting the initialization transaction";
+            boolean inTransaction = false;
             try {
-                connection.setAutoCommit(false);
+                Database.beginImmediate(connection);
+                inTransaction = true;
 
-                step = "creating the schema";
-                createSchema(connection);
+                step = "creating the tables";
+                createTables(connection);
 
                 step = "verifying the schema";
                 verifySchema(connection, file);
+
+                step = "creating the indexes";
+                createIndexes(connection);
 
                 step = "checking or seeding the parking layout";
                 seedLayout(connection);
@@ -185,21 +213,111 @@ public final class DatabaseInitializer {
                 seedSettings(connection);
 
                 step = "committing the initialization transaction";
-                connection.commit();
+                Database.commit(connection);
+                inTransaction = false;
+
+                step = "enabling WAL journal mode";
+                enableWriteAheadLog(connection);
             } catch (SQLException e) {
-                rollback(connection, e);
+                if (inTransaction) {
+                    Database.rollback(connection, e);
+                }
                 throw new DataAccessException(
                         "Database initialization failed while " + step + " (" + file + "): "
                                 + e.getMessage(),
                         e);
             } catch (RuntimeException e) {
-                rollback(connection, e);
+                if (inTransaction) {
+                    Database.rollback(connection, e);
+                }
                 throw e;
             }
         } catch (SQLException e) {
             throw new DataAccessException(
                     "Database initialization finished but the SQLite connection could not be closed ("
                             + file + "): " + e.getMessage(),
+                    e);
+        }
+    }
+
+    /**
+     * Restores the demo database to a clean starting state without touching the schema.
+     *
+     * <p>One {@code BEGIN IMMEDIATE} transaction: verify the schema; delete every payment, then
+     * every parking session (payments reference sessions, so this order keeps foreign keys
+     * satisfied); if the slot rows are not exactly the frozen 24-bay layout, delete them and
+     * insert the expected layout; validate the layout; keep an existing admin PIN (seed the
+     * default only when absent); set the kiosk mode to {@code ENTRY}. Tables are never dropped
+     * and the database file is never deleted.</p>
+     *
+     * <p>Either everything is committed or, on any failure, the transaction is rolled back and
+     * a {@link DataAccessException} is thrown; payments and sessions are then unchanged.</p>
+     *
+     * @throws DataAccessException if any step fails; nothing is changed in that case
+     */
+    public void resetDemoData() {
+        try (Connection connection = database.openConnection()) {
+            String step = "starting the reset transaction";
+            boolean inTransaction = false;
+            try {
+                Database.beginImmediate(connection);
+                inTransaction = true;
+
+                step = "verifying the schema";
+                verifySchema(connection, database.file().toAbsolutePath());
+
+                step = "deleting payments";
+                executeUpdate(connection, "DELETE FROM payments");
+
+                step = "deleting parking sessions";
+                executeUpdate(connection, "DELETE FROM parking_sessions");
+
+                step = "restoring the parking layout";
+                if (!layoutMatchesExpected(connection)) {
+                    executeUpdate(connection, "DELETE FROM parking_slots");
+                    insertExpectedLayout(connection);
+                }
+
+                step = "validating the parking layout";
+                validateLayout(connection);
+
+                step = "resetting the settings";
+                seedSettings(connection);
+                try (PreparedStatement statement =
+                             connection.prepareStatement(UPSERT_SETTING_SQL)) {
+                    insertSetting(statement, SettingsRepository.KEY_KIOSK_MODE,
+                            DEFAULT_KIOSK_MODE);
+                }
+
+                step = "committing the reset transaction";
+                Database.commit(connection);
+                inTransaction = false;
+            } catch (SQLException e) {
+                if (inTransaction) {
+                    Database.rollback(connection, e);
+                }
+                throw new DataAccessException(
+                        "Demo reset failed while " + step + "; no data was changed: "
+                                + e.getMessage(),
+                        e);
+            } catch (DataAccessException e) {
+                if (inTransaction) {
+                    Database.rollback(connection, e);
+                }
+                throw e;
+            } catch (RuntimeException e) {
+                if (inTransaction) {
+                    Database.rollback(connection, e);
+                }
+                throw new DataAccessException(
+                        "Demo reset failed while " + step + "; no data was changed: "
+                                + e.getMessage(),
+                        e);
+            }
+        } catch (SQLException e) {
+            throw new DataAccessException(
+                    "Demo reset finished but the SQLite connection could not be closed: "
+                            + e.getMessage(),
                     e);
         }
     }
@@ -218,11 +336,50 @@ public final class DatabaseInitializer {
         }
     }
 
-    private static void createSchema(Connection connection) throws SQLException {
+    private static void createTables(Connection connection) throws SQLException {
+        executeAll(connection, TABLE_STATEMENTS);
+    }
+
+    private static void createIndexes(Connection connection) throws SQLException {
+        executeAll(connection, INDEX_STATEMENTS);
+    }
+
+    private static void executeAll(Connection connection, List<String> statements)
+            throws SQLException {
         try (Statement statement = connection.createStatement()) {
-            for (String sql : SCHEMA_STATEMENTS) {
+            for (String sql : statements) {
                 statement.execute(sql);
             }
+        }
+    }
+
+    private static void executeUpdate(Connection connection, String sql) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.executeUpdate(sql);
+        }
+    }
+
+    /**
+     * Switches the file to WAL and verifies the mode SQLite reports back. Must be called
+     * outside a transaction.
+     */
+    private static void enableWriteAheadLog(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("PRAGMA journal_mode = WAL")) {
+            String mode = resultSet.next() ? resultSet.getString(1) : null;
+            if (!"wal".equalsIgnoreCase(mode)) {
+                throw new SQLException(
+                        "SQLite reported journal_mode " + quote(mode) + " instead of wal");
+            }
+        }
+    }
+
+    /** True when the stored rows are exactly the frozen layout (an unreadable row is "no"). */
+    private static boolean layoutMatchesExpected(Connection connection) throws SQLException {
+        try {
+            return readSlots(connection).equals(expectedLayout());
+        } catch (DataAccessException invalidRow) {
+            return false;
         }
     }
 
@@ -451,18 +608,6 @@ public final class DatabaseInitializer {
         return new DataAccessException(
                 "Existing parking_slots layout is invalid: " + detail
                         + ". Existing rows were left untouched.");
-    }
-
-    /**
-     * Rolls back after a failure. If rollback itself fails, the rollback exception is attached
-     * to the original failure as suppressed rather than replacing it.
-     */
-    private static void rollback(Connection connection, Throwable failure) {
-        try {
-            connection.rollback();
-        } catch (SQLException rollbackFailure) {
-            failure.addSuppressed(rollbackFailure);
-        }
     }
 
     private record TableSpec(String table, List<String> columns) {

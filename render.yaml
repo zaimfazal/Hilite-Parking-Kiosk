@@ -1,0 +1,29 @@
+# Render Blueprint for HiLITE Mall Smart Parking (free plan).
+#
+# Create it from: https://dashboard.render.com/blueprint/new?repo=https://github.com/zaimfazal/Hilite-Parking-Kiosk
+#
+# FREE PLAN LIMITS (deliberate choice for a no-cost demo):
+# - The service sleeps after 15 minutes without traffic; the first request then takes ~1 minute.
+# - There is no persistent disk on the free plan: every sleep, restart or redeploy starts with a
+#   fresh, empty 24-bay car park (the app re-creates and seeds the SQLite file on startup).
+# - For persistent data, switch to a paid plan and add a disk mounted at /data.
+services:
+  - type: web
+    name: hilite-mall-parking
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /actuator/health
+    autoDeploy: true
+    envVars:
+      # Render injects PORT itself; the app reads it (server.port=${PORT:8080}).
+      - key: HILITE_DB_PATH
+        value: /data/hilite-parking.db
+      - key: HILITE_TIME_ZONE
+        value: Asia/Kolkata
+      # Keep the JVM inside the free plan's 512 MB memory.
+      - key: JAVA_TOOL_OPTIONS
+        value: -XX:MaxRAMPercentage=70 -XX:+UseSerialGC -Xss512k -XX:+ExitOnOutOfMemoryError

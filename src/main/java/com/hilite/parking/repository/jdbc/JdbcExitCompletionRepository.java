@@ -17,8 +17,10 @@ import java.util.Objects;
  * JDBC implementation of {@link ExitCompletionRepository}.
  *
  * <p><strong>One connection, one transaction.</strong> Closing the session and inserting the
- * confirmed payment both run on the same {@link Connection} with auto-commit disabled. The
- * method returns {@code true} only after {@link Connection#commit()} succeeds.</p>
+ * confirmed payment both run on the same {@link Connection} inside one explicit
+ * {@code BEGIN IMMEDIATE} transaction ({@link Database#beginImmediate(Connection)}), so the write
+ * lock is taken up front and waits up to the busy timeout instead of failing on upgrade. The
+ * method returns {@code true} only after {@code COMMIT} succeeds.</p>
  *
  * <p><strong>Conditional update is the concurrency protection.</strong> The session is closed
  * with {@code WHERE session_id = ? AND exit_time IS NULL}. SQLite applies that update
@@ -71,11 +73,17 @@ public final class JdbcExitCompletionRepository implements ExitCompletionReposit
         }
 
         try (Connection connection = database.openConnection()) {
+            boolean inTransaction = false;
             try {
-                connection.setAutoCommit(false);
+                // BEGIN IMMEDIATE: take the write lock now (waiting up to busy_timeout) rather
+                // than on the first write, so the transaction can never fail on lock upgrade.
+                Database.beginImmediate(connection);
+                inTransaction = true;
 
                 if (!completeSession(connection, sessionId, exitTime, finalFee)) {
-                    connection.rollback();
+                    // Nothing was written; end the transaction to release the write lock.
+                    Database.commit(connection);
+                    inTransaction = false;
                     return false;
                 }
 
@@ -83,13 +91,18 @@ public final class JdbcExitCompletionRepository implements ExitCompletionReposit
                     insertPayment(connection, payment);
                 }
 
-                connection.commit();
+                Database.commit(connection);
+                inTransaction = false;
                 return true;
             } catch (SQLException e) {
-                rollback(connection, e);
+                if (inTransaction) {
+                    Database.rollback(connection, e);
+                }
                 throw SqlCodec.failure("Completing exit", e);
             } catch (RuntimeException e) {
-                rollback(connection, e);
+                if (inTransaction) {
+                    Database.rollback(connection, e);
+                }
                 throw e;
             }
         } catch (SQLException e) {
@@ -154,14 +167,4 @@ public final class JdbcExitCompletionRepository implements ExitCompletionReposit
         }
     }
 
-    /**
-     * Rolls back, attaching a rollback failure to the primary failure instead of replacing it.
-     */
-    private static void rollback(Connection connection, Throwable failure) {
-        try {
-            connection.rollback();
-        } catch (SQLException rollbackFailure) {
-            failure.addSuppressed(rollbackFailure);
-        }
-    }
 }

@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.Objects;
 
 /** Small shared formatting helpers so dates, money and plates read consistently. */
 public final class FormatUtil {
@@ -34,6 +35,42 @@ public final class FormatUtil {
             return "—";
         }
         return dateTime(LocalDateTime.ofInstant(instant, ZoneId.systemDefault()));
+    }
+
+    /**
+     * Formats a stored UTC {@link Instant} in an explicitly configured zone, for example
+     * {@code Asia/Kolkata}, so the result does not depend on the server's default zone.
+     *
+     * @return "dd MMM yyyy, hh:mm a", or "—" when {@code instant} is {@code null}
+     * @throws NullPointerException if {@code zone} is {@code null}
+     */
+    public static String dateTime(Instant instant, ZoneId zone) {
+        Objects.requireNonNull(zone, "zone is required");
+        return instant == null ? "—" : dateTime(LocalDateTime.ofInstant(instant, zone));
+    }
+
+    /**
+     * Formats the time of day of a stored UTC {@link Instant} in an explicit zone.
+     *
+     * @return "hh:mm a", or "—" when {@code instant} is {@code null}
+     * @throws NullPointerException if {@code zone} is {@code null}
+     */
+    public static String time(Instant instant, ZoneId zone) {
+        Objects.requireNonNull(zone, "zone is required");
+        return instant == null ? "—" : time(LocalDateTime.ofInstant(instant, zone));
+    }
+
+    /**
+     * Label for an hour-of-day bucket: 0 is "12 AM", 12 is "12 PM", 13 is "1 PM".
+     *
+     * @throws IllegalArgumentException if {@code hour} is outside 0..23
+     */
+    public static String hourLabel(int hour) {
+        if (hour < 0 || hour > 23) {
+            throw new IllegalArgumentException("hour must be between 0 and 23: " + hour);
+        }
+        int twelveHour = hour % 12 == 0 ? 12 : hour % 12;
+        return twelveHour + (hour < 12 ? " AM" : " PM");
     }
 
     public static String shortDateTime(LocalDateTime dateTime) {

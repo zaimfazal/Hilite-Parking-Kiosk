@@ -4,6 +4,11 @@ Visual contract for the application. Derived from the five supplied design refer
 were inspected in Phase 0. References define the design language, not pixel-exact cloning.
 This guide is authoritative for later phases; deviations require a documented reason.
 
+> **Since Phase 7 (2026-10-28) the UI is a Java website (Vaadin Flow 25.3).** The design
+> language, tokens and component specifications below still apply. §4 ("JavaFX-safe" glass)
+> and §9 (JavaFX rules) are kept as history; the web implementation rules and the deliberate web
+> differences are in **§11**.
+
 ---
 
 ## 1. Reference analysis
@@ -370,7 +375,7 @@ on transition, no cross-fading of different logical states.
 
 ---
 
-## 9. JavaFX implementation rules
+## 9. JavaFX implementation rules (Phases 1–5, historical)
 
 - FXML for structure; CSS for styling; controllers only for behaviour/state.
 - Every displayed value that represents a real session comes from a model/service — never
@@ -403,3 +408,70 @@ on transition, no cross-fading of different logical states.
 - [ ] No full-screen mockup, remote image, or fake metric in production.
 - [ ] Primary actions 56–72 px at kiosk scale and reachable without scrolling.
 - [ ] Disclaimer visible; PIN never shown; demo payment clearly labelled.
+
+---
+
+## 11. Web implementation (Vaadin, Phase 7)
+
+**Where it lives.**
+
+| Area | Location |
+|---|---|
+| Views (Java only) | `com.hilite.parking.web.kiosk` (`KioskHomeView`, `EntryView`, `AllocationView`, `ExitView`) and `web.admin` (`AdminPinView`, `DashboardView`) |
+| Shared pieces | `web.ui` (`KioskPage`, `KioskHeader`, `Backdrop`, `Icons`, `InlineMessage`, `ActionButton`, `Ticker`) |
+| Design system | `src/main/resources/META-INF/resources/styles.css`, loaded with `@StyleSheet` after Lumo |
+
+`@Theme` is not used (deprecated in Vaadin 25).
+
+**Rules.**
+
+- **Tokens.** The §3 palette, radii and shadows are CSS custom properties (`--hk-*` for the
+  kiosk, `--ad-*` for admin). Compact rules apply at `max-width: 1499px` or
+  `max-height: 819px`, the same breakpoint the JavaFX build used.
+- **Glass.** Real `backdrop-filter: blur()` with a translucent-fill fallback.
+- **Typography.** Tracked capitals (`letter-spacing`) are now possible and are used for the
+  eyebrow and signage labels from the references. System font stacks only; no web fonts.
+- **Icons.** Inline SVG built from the original 24×24 path data. Icons are
+  `aria-hidden="true"` and always sit next to text or an `aria-label`.
+- **Backdrop.** A constant inline SVG. The markup is a compile-time constant, never user input.
+- **Timers.** The scan simulation and the header clock use Vaadin UI polling (500 ms on the
+  kiosk, 10 s for dashboard refresh). There is no WebSocket push and no custom JavaScript.
+- **Safety.** User input is only ever set with `setText` or as a field value, never as HTML.
+- **Accessibility.**
+  - Icon-only buttons have `aria-label`s ("Administrator access", "Clear number plate",
+    "Backspace").
+  - Errors use `role="alert"`.
+  - Keyboard focus is visible (`:focus-visible`).
+  - Focus moves to the new state on each Exit step.
+  - Dialogs trap focus and close on Esc.
+  - The PIN keypad does not steal focus.
+
+**Deliberate web differences from the JavaFX screens.** Each one fixes an item in
+`AUDIT_REPORT.md` §4.1.
+
+- The dashboard is **live**: KPIs, floor maps, cars/bikes, EV use, peak hour and long-stay
+  alerts all come from the database. Nothing comes from `PreviewData`, and there is no
+  "PREVIEW DATA" pill.
+- A compact 24-hour CSS bar chart sits under the peak-hour figure, with the peak bar
+  highlighted. When there is no history it shows "No entries recorded yet." and the peak hour
+  shows "—". No chart library is used.
+- The kiosk-mode selector **saves the mode and stays on the dashboard**, then shows a
+  confirmation. The public kiosk home (`/`) follows the saved mode.
+- The Reset dialog copy states what really happens. A success notice appears only after the
+  transaction commits.
+- The bay-details default reads "Select a bay" with no misleading "Available" pill.
+- Allocation signage reads "GROUND FLOOR · G" / "FIRST FLOOR · F1" instead of the invented
+  "LEVEL 01/02".
+- Minimum text size is 11 px on the kiosk and 12 px on the admin screens. Muted admin text is
+  darkened for contrast.
+- The vehicle caption reads "Bikes & scooters", never "two-wheelers".
+- A locked `/admin/dashboard` **forwards** to `/admin`, so the address bar matches the screen.
+
+**Verified layouts** (Phase 7 browser walkthrough, headless Edge):
+
+- Entry, Allocation, Exit (scan, quote, payment, success), Admin PIN, Dashboard and the Reset
+  dialog at 1920×1080.
+- Entry and the Exit quote at 1366×768.
+- The dashboard at 1366×768 and 1024×768.
+
+No horizontal scrolling, clipping or overlap was found.
