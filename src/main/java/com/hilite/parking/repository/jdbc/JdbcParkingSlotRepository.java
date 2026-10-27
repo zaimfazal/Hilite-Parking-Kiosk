@@ -89,11 +89,16 @@ public final class JdbcParkingSlotRepository implements ParkingSlotRepository {
     }
 
     private static ParkingSlot mapRow(ResultSet results) throws SQLException {
-        return new ParkingSlot(
-                results.getString("slot_id"),
-                Floor.valueOf(results.getString("floor")),
-                results.getInt("bay_number"),
-                Zone.valueOf(results.getString("zone")),
-                results.getInt("charging") == 1);
+        String slotId = results.getString("slot_id");
+        String floor = results.getString("floor");
+        int bayNumber = results.getInt("bay_number");
+        String zone = results.getString("zone");
+        int charging = results.getInt("charging");
+        try {
+            return new ParkingSlot(
+                    slotId, Floor.valueOf(floor), bayNumber, Zone.valueOf(zone), charging == 1);
+        } catch (IllegalArgumentException | NullPointerException corrupt) {
+            throw SqlCodec.corruptRow("parking_slots", slotId, corrupt);
+        }
     }
 }

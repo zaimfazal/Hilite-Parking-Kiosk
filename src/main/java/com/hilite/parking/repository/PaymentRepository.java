@@ -16,8 +16,10 @@ public interface PaymentRepository {
     /**
      * Inserts one payment.
      *
-     * @throws DataAccessException if the session does not exist, the amount is not a whole
-     *                             number of paise, or the status/timestamp rule is violated
+     * @throws IllegalArgumentException if the amount is not a whole number of paise (checked
+     *                                  before any SQL runs)
+     * @throws DataAccessException      if the session does not exist, the payment id is already
+     *                                  used, or the status/timestamp rule is violated
      */
     void insert(Payment payment);
 

@@ -1,0 +1,30 @@
+# HiLITE Mall Smart Parking - single-instance deployment.
+#
+#   cp .env.example .env      # optional; every setting has a default
+#   docker compose up --build -d
+#   open http://localhost:8080
+#
+# SQLite is a single-file database: run exactly ONE replica of this service per volume.
+# Do not use `--scale` or deploy replicas > 1.
+
+services:
+  hilite-parking:
+    build: .
+    image: hilite-parking:latest
+    container_name: hilite-parking
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:${PORT:-8080}"
+    environment:
+      PORT: "${PORT:-8080}"
+      HILITE_DB_PATH: "${HILITE_DB_PATH:-/data/hilite-parking.db}"
+      HILITE_TIME_ZONE: "${HILITE_TIME_ZONE:-Asia/Kolkata}"
+      HILITE_ADMIN_MAX_ATTEMPTS: "${HILITE_ADMIN_MAX_ATTEMPTS:-5}"
+      HILITE_ADMIN_LOCKOUT: "${HILITE_ADMIN_LOCKOUT:-30s}"
+    volumes:
+      - hilite-data:/data
+    # Graceful shutdown (server.shutdown=graceful) gets time to finish requests.
+    stop_grace_period: 30s
+
+volumes:
+  hilite-data:

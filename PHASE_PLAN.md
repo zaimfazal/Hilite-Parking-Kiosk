@@ -176,7 +176,8 @@ Scope (as planned):
   `VehicleType`, `KioskMode`, `Floor`, `Zone`, `ParkingSlot`, `ParkingSession`,
   `PaymentStatus`, `Payment`.
 - **Service** `com.hilite.parking.service.FeeCalculator` — one public method:
-  `BigDecimal calculateFee(VehicleType, Instant, Instant)`.
+  `BigDecimal calculateFee(VehicleType, Instant, Instant)`. *(Audit 2026-10-28: Phase 5 later
+  added `hourlyRate(VehicleType)` and the public `FREE_ALLOWANCE` constant for display.)*
 - **Tests** under `src/test/java` — 4 classes, **68 JUnit 5 tests**:
   `FeeCalculatorTest` (26), `ParkingSessionTest` (18), `PaymentTest` (13),
   `ParkingSlotTest` (11).
@@ -191,7 +192,9 @@ Scope (as planned):
 - `ParkingSession(sessionId, registration, vehicleType, chargingRequested, slotId, entryTime,
   exitTime, finalFee)` uses UTC `Instant` timestamps and `BigDecimal` rupees. Active = both
   `exitTime` and `finalFee` null; completed = both present. Registration is expected to be
-  normalized by the caller with `FormatUtil.normalizePlate`.
+  normalized by the caller with `FormatUtil.normalizePlate`. *(Superseded in Phase 3: the
+  persisted key rule is `RegistrationUtil.normalize`; `FormatUtil.normalizePlate` is display
+  only.)*
 - `Payment(paymentId, sessionId, amount, status, confirmedAt)` uses `PaymentStatus`
   (`PENDING`, `CONFIRMED`); `CONFIRMED` requires a timestamp and `PENDING` forbids one.
 - `KioskMode` (`ENTRY`, `EXIT`) and `VehicleType` (`CAR`, `BIKE`) are the business enums.
@@ -362,7 +365,9 @@ Acceptance evidence:
 - [x] Duplicate active bay assignment rejected by a partial unique index.
 - [x] Completed sessions do not block a later session for the same plate/bay.
 - [x] FK violations, invalid session null pairings, invalid payment status/timestamp values,
-      invalid enums, and sub-paise amounts are rejected.
+      invalid enums, and sub-paise amounts are rejected. *(Audit 2026-10-28: no test exercised
+      invalid enum values until Phase 6's `RepositoryHardeningTest`, which covers a corrupt slot
+      enum.)*
 - [x] Tests never touch `data/hilite-parking.db`; no `data/` folder was created.
 - [x] `MainApp` does not initialize the database and no controller imports SQL.
 - [x] Database initialization never drops, truncates, or resets existing records.
@@ -761,11 +766,11 @@ index remains the final safeguard.
 | Missing / invalid / unknown plate | `invalidRegistrationsRejected`, `unknownRegistrationIsNotFound` |
 | Already-completed session | `completedSessionIsReported`, `completedQuoteConfirmedAgain` |
 | Quote keeps its billing timestamp; fresh quote → fresh time | `quoteUsesOneCapturedExitTimestamp`, `freshQuoteUsesFreshTimestamp` |
-| Quote / cancel writes nothing | `quoteDoesNotModifySession`, `quoteNeverCreatesPayment`, `repeatedQuotesLeaveSessionUnchanged` |
+| Quote writes nothing (cancel itself was controller-only until the Phase 7 web view tests) | `quoteDoesNotModifySession`, `quoteNeverCreatesPayment`, `repeatedQuotesLeaveSessionUnchanged` |
 | Paid exit: one payment, completed, exit = quote time, fee = quote, bay freed, survives reopen | `confirmPaymentCompletesSessionAndWritesOnePayment`, `paidExitFreesTheBay`, `paidExitPersistsAfterReopen` |
 | Zero-fee exit: no payment, ₹0, bay freed | `zeroFeeExitClosesWithoutPayment` |
 | Repeat / stale / wrong-path attempts | `secondConfirmationCannotChargeTwice`, `staleQuoteCannotCloseAnotherSession`, `tamperedFeeQuoteIsStale`, `paidQuoteCannotUseZeroFeePath`, `zeroFeeQuoteCannotConfirmPayment` |
-| Rollback (trigger forces failure **after** the session update) | `paymentInsertFailureRollsBackCompletion`, `sessionUpdateFailureRollsBackEverything`, `zeroFeeCompletionFailureLeavesSessionActive` |
+| Rollback | `paymentInsertFailureRollsBackCompletion` (failure **after** the session update — the real partial-write test), `sessionUpdateFailureRollsBackEverything`, `zeroFeeCompletionFailureLeavesSessionActive` (these two fail **at** the session update, before any payment insert; corrected by the 2026-10-28 audit) |
 
 Required checklist:
 
@@ -829,9 +834,13 @@ Environment: Windows 11 `10.0.26300`, Oracle Java 26.0.2.1, Maven 3.9.11 from
 
 ## Phase 6 — Admin PIN, dashboard, mode, alerts, statistics, reset
 
-**Status: Not started · Depends on: Phase 5**
+**Status: Complete (2026-10-28) · Depends on: Phase 5** — the admin business layer is
+complete and tested. Its screens were delivered as Vaadin views in Phase 7, not as JavaFX
+screens: the brief for Phases 6–7 replaced the desktop UI with a Java website, so wiring the
+JavaFX dashboard first would have been thrown away. The original plan is kept below, followed
+by the actual results.
 
-Scope:
+Scope (as planned):
 
 - PIN screen against `admin_settings`; keypad, clear/backspace, invalid feedback; demo PIN 1234,
   not displayed. Session-scoped admin unlock; lock on leaving admin.
@@ -843,29 +852,161 @@ Scope:
 - Reset: auth + confirmation, transactional clear of sessions/payments, reseed/restore bays,
   mode back to Entry, refresh open views.
 
-Required tests:
+### How this phase was delivered
 
-- [ ] Statistics correct on empty DB (zeros; peak hour handled gracefully, e.g. "—").
-- [ ] Statistics correct for mixed cars/bikes, active/completed sessions, per-floor occupancy.
-- [ ] Entry-by-hour buckets use local hour; peak hour correct and deterministic on ties
-  (document tie-break, e.g. earliest hour).
-- [ ] Long-stay excludes exactly 12 h; includes 12 h + 1 s; fields complete.
-- [ ] PIN accepts 1234, rejects wrong PIN; PIN never rendered in UI.
-- [ ] Mode switch keeps sessions/bays unchanged; persists across restart.
-- [ ] Reset cancelled changes nothing (DB + UI).
-- [ ] Confirmed reset clears sessions/payments, restores 24 bays/4 charging, all free,
-  keeps schema, mode = ENTRY.
-- [ ] Dashboard reads the same DB as kiosk (occupancy changes reflect immediately).
+The audit came first (`AUDIT_REPORT.md`, produced by three real parallel read-only agents plus
+the lead). The lead then froze the Phase 6 API, and two **real parallel agents** implemented it.
+Each owned its own files and built into its own output directory (`-Dhilite.build.dir`):
 
-Acceptance: all above pass + manual dashboard review with seeded demo activity.
+- **Domain/database agent:**
+  - the critical fixes from audit §5.1;
+  - `DatabaseInitializer.resetDemoData`, `DemoResetService`, `ParkingService.findAllocation`
+    and the `FormatUtil` zone overloads;
+  - 39 tests.
+- **Admin/statistics agent:**
+  - `AdminAccessService`, `StatisticsService` and its records, `LongStayService` and
+    `LongStayAlert`;
+  - 35 tests.
 
-Verification: `mvn -q test -Dtest='*Statistics*,*Admin*,*Reset*'` + launched UI check.
+The lead reviewed both diffs and ran the integrated build.
+
+### Critical fixes (audit §5.1)
+
+- **WAL.** `PRAGMA journal_mode=WAL` is set after a successful initialization commit. A
+  rejected file is left untouched. The setting persists in the file; `busy_timeout=5000`
+  applies to every connection.
+- **`BEGIN IMMEDIATE`** is used by `JdbcExitCompletionRepository.complete`,
+  `DatabaseInitializer.initialize` and `resetDemoData`, through the helpers
+  `Database.beginImmediate/commit/rollback`. The write lock is taken up front and waits up to
+  the busy timeout; it cannot fail on lock upgrade.
+- **Allocation retry.** The next bay is tried only after a UNIQUE / PRIMARY KEY / trigger
+  constraint failure (`ParkingService.isLostRace`). BUSY, I/O and other errors are rethrown, so
+  a free lower bay is never skipped.
+- **Corrupt rows.** A corrupt timestamp or enum value becomes a `DataAccessException` with the
+  row id, never a raw parse error.
+- **Schema check order.** Tables are created, then verified, then indexed. A malformed existing
+  table now gets the friendly "missing required column(s)" message, and everything is rolled
+  back.
+
+### Public contract added
+
+| Type | Contract |
+|---|---|
+| `AdminAccessService` | `verifyPin(String)`:<br>• trimmed<br>• null or blank → false<br>• stored PIN missing → `1234`<br>• constant-time `MessageDigest.isEqual`<br>• the PIN is never exposed (including `toString`)<br><br>`currentMode()`:<br>• only the exact names `ENTRY` / `EXIT` are accepted<br>• anything else → ENTRY<br><br>`changeMode(KioskMode)` writes only `kiosk.mode`. |
+| `StatisticsService.snapshot()` → `DashboardStatistics` | Reads slots once and sessions once, then derives every figure in Java, so the snapshot is internally consistent:<br>• entries / exits<br>• cars and bikes entered / exited<br>• occupied / available<br>• per-floor occupancy<br>• charging occupancy<br>• 24 hourly buckets in the configured zone<br>• `peakHour` is empty with no history; ties go to the **earliest** hour<br>• 24 `BayStatus` in layout order |
+| `LongStayService.activeAlerts()` → `List<LongStayAlert>` | Active sessions with **whole** elapsed seconds > 43,200:<br>• 12 h + 500 ms is not an alert; 12 h + 1 s is<br>• fields: plate, type, floor, bay, entry, elapsed, charging<br>• sorted longest first, then by bay id |
+| `DatabaseInitializer.resetDemoData()` / `DemoResetService.reset()` | One IMMEDIATE transaction:<br>1. delete payments<br>2. delete sessions<br>3. restore the exact 24-bay layout if it was tampered with, then validate it<br>4. keep an existing PIN (insert `1234` only if missing)<br>5. set `kiosk.mode=ENTRY`<br><br>Any failure rolls everything back. |
+| `ParkingService.findAllocation(sessionId)` | Read-only lookup for the web confirmation page. Never allocates. |
+| `FormatUtil.dateTime/time(Instant, ZoneId)`, `hourLabel(int)` | Display in the configured mall zone. |
+
+### Tests (74 new; all passing)
+
+| Class | Tests | Protects |
+|---|---:|---|
+| `AdminAccessServiceTest` | 14 | default / changed / wrong / blank / trimmed PIN; PIN never in `toString`; mode default, persistence across reopen, invalid value → ENTRY; mode change touches only `kiosk.mode` |
+| `StatisticsServiceTest` | 11 | empty database; mixed cars and bikes; per floor; charging; hourly buckets differ between Asia/Kolkata and UTC; peak tie → earliest; bay order; real exit frees a bay; immutability; record validation |
+| `LongStayServiceTest` | 10 | exactly 12 h, 12 h + 500 ms, 12 h + 1 s; future entry; completed excluded; all fields; ordering; immutability |
+| `DemoResetTest` | 10 | clears sessions and payments; all 24 bays free with 4 charging; keeps a changed PIN; restores a missing PIN; mode → ENTRY; restores a tampered layout; schema and file kept; repeatable; **real partial-write rollback** (the trigger fires only after payments were deleted); incompatible schema → no change |
+| `DatabaseConcurrencyTest` | 6 | WAL on and persistent; busy_timeout; readers not blocked by a writer; reset and exit completion **wait** for a concurrent writer instead of failing |
+| `RepositoryHardeningTest` | 4 | malformed table → friendly message plus full rollback; corrupt session timestamp, payment timestamp and slot enum wrapped |
+| `AllocationFailureTest` | 6 | a non-constraint SQL error and BUSY are rethrown without trying the next bay; a constraint race still retries; two threads with the same plate → exactly one session; two threads with different plates → G-01 and G-02 |
+| `FindAllocationTest` | 4 | active, completed, unknown, blank |
+| `DemoResetServiceTest` | 3 | delegation, failure propagation, null argument |
+| `FormatUtilTest` | 6 | zone overloads, null handling, `hourLabel` 0–23 boundaries |
+
+Required checklist (business layer; the UI items are verified in Phase 7):
+
+- [x] Statistics correct on an empty database (zeros, no peak hour).
+- [x] Statistics correct for mixed cars and bikes, active and completed, per floor.
+- [x] Hourly buckets use the configured local zone; a peak tie goes to the earliest hour.
+- [x] Long-stay excludes exactly 12 h and includes 12 h + 1 s; all fields present.
+- [x] PIN `1234` accepted, wrong PIN rejected, PIN never exposed by the service.
+- [x] Mode switch keeps sessions and bays unchanged and persists across reopen.
+- [x] Confirmed reset clears sessions and payments, restores 24 bays / 4 charging, keeps the
+      schema, sets mode to ENTRY, and rolls back fully on failure.
+- [x] Reset cancelled changes nothing, and the dashboard reflects the kiosk immediately. Both
+      were verified in Phase 7, by `DashboardViewTest` and the browser walkthrough.
+
+### Verification evidence
+
+- The lead ran `mvn -B clean verify` on the integrated JavaFX-based tree → **BUILD SUCCESS,
+  Tests run: 231, Failures: 0, Errors: 0, Skipped: 0** (157 baseline + 74 Phase 6). No `data/`
+  folder was created.
+- After the pom migration to Spring Boot 4.1.2 + Vaadin 25.3.4, the same suite gave **231 / 0 /
+  0 / 0**.
 
 ---
 
-## Phase 7 — Integration, refinement, release
+## Phase 7 — Java web migration, integration, release
 
-**Status: Not started · Depends on: Phase 6**
+**Status: Complete (2026-10-28) · Depends on: Phase 6.** Everything is verified except the
+Docker image, which has not been built (see below).
+
+### What was delivered
+
+The brief for Phases 6–7 changed Phase 7 from "polish the JavaFX app" to "rebuild it as a
+browser-deployable Java website". The business layer is reused unchanged.
+
+| Area | Delivered |
+|---|---|
+| Stack | Spring Boot **4.1.2** and Vaadin **25.3.4** (`vaadin-core`), Java 21, sqlite-jdbc 3.53.4.0, Actuator, `browserless-test-spring`. Versions were taken from the official Vaadin 25.3 compatibility page and Vaadin's own Spring starter, then proven with a scratch build first. |
+| App shell and wiring (lead) | `HiliteParkingApplication` (Spring Boot + `AppShellConfigurator`, `@StyleSheet` Lumo + `styles.css`)<br>`config/ParkingConfiguration` constructs the existing services. The database is initialized once, before any repository bean exists.<br>`config/HiliteProperties` reads `hilite.db-path` / `HILITE_DB_PATH`, the time zone, the PIN attempt limit and the lock-out. Invalid values stop startup.<br>`application.properties` exposes only `/actuator/health`, without details. |
+| Server-side admin guard (lead) | `web/security/AdminAuthorization` keeps the unlock flag in the `VaadinSession`, counts wrong PINs per session, applies the lock-out and fails closed.<br>`AdminOperations` is the only path from the admin views to statistics, alerts, mode and reset, and it re-checks authorization on every call. |
+| Views (web UI agent) | `/` mode-aware kiosk home, `/entry`, `/allocation/:sessionId` (read-only), `/exit` (4 states in one view), `/admin`, `/admin/dashboard`.<br>Shared header, footer, inline-SVG backdrop and icons, and the full design-token CSS.<br>UI polling instead of push; no custom JavaScript. |
+| Deployment (QA agent) | Multi-stage `Dockerfile` (pinned Temurin 21 JRE, non-root UID 10001, `/data` volume, curl `HEALTHCHECK`)<br>`.dockerignore`, `.env.example`, `docker-compose.yml` (single instance, named volume)<br>`health/DatabaseHealthIndicator` (generic DOWN detail only) |
+| Removed | The JavaFX UI: `MainApp`, `Navigator`, `controller/*`, `preview/*`, `util/Icons`, `GarageBackdrop`, `UiEffects`, `fxml/*`, `css/*`. They are still in Git history at `1749daa`, and no production or test code referenced them. |
+
+### Workstreams actually used
+
+- **Real parallel agents, each with exclusive files:**
+  - web UI;
+  - QA/deployment.
+- **Build coordination:** each agent used its own build directory, and builds were serialized
+  with a lock file because Vaadin's frontend step writes to the project root.
+- **The web UI agent was stopped** before it sent its final report. Its last message said all
+  screens looked right and that it was starting the final build. The lead took over:
+  1. removed its stale build lock and output folder;
+  2. reviewed its code against the contract (no user input rendered as HTML; `innerHTML` only
+     for constant SVG; no repositories in views; admin actions only through
+     `AdminOperations`; no `@Push`; no remote URLs);
+  3. verified every UI_GUIDE §11 claim in the code;
+  4. ran the final build and the browser walkthrough.
+- **One lead fix during verification:** a locked `/admin/dashboard` used `rerouteTo`, which
+  showed the PIN screen under the dashboard URL. It now uses `forwardTo`, so the address bar
+  reads `/admin`.
+
+### Verification evidence
+
+- **Build:** `mvn -B clean verify` → **BUILD SUCCESS, Tests run: 289, Failures: 0, Errors:
+  0, Skipped: 0**. The breakdown by area is in README §8.
+  - New in Phase 7: 31 browserless view tests, 14 deployment and health tests, and 13
+    authorization / lock-out tests.
+- **Packaged JAR:**
+  - `java -jar target/hilite-parking.jar` with `HILITE_DB_PATH` pointing at a scratch file.
+  - The log showed production mode.
+  - `/actuator/health` returned 200 `UP`, and `/` returned 200.
+- **Browser walkthrough:** headless Edge driven over the DevTools protocol by a throwaway
+  script kept outside the repository, against the production JAR on a seeded scratch database.
+  **43/43 checks passed.**
+  - Entry → G-02 allocation; revisit; duplicate rejected inline.
+  - ₹10 paid exit with cancel then confirm; repeat exit refused.
+  - ₹0 exit with no payment.
+  - **Application restarted on the same file:** the dashboard showed the same 4 entries and 2
+    exits.
+  - Admin: a locked dashboard → PIN; wrong PIN rejected; `1234` → live dashboard with the
+    long-stay alert; mode saved without navigating; `/` followed the mode.
+  - Reset: cancel kept data; confirm cleared it and set Entry.
+  - Lock required the PIN again.
+  - No horizontal scrolling at 1920×1080, 1366×768, or 1024×768 (dashboard).
+  - The screenshots were inspected visually.
+- **Not verified:**
+  - building or running the Docker image (Docker is not installed on the build machine);
+  - `mvn spring-boot:run` development mode;
+  - physical mouse and keyboard;
+  - mobile devices;
+  - any public deployment. None was made.
+
+### Original Phase 7 plan (kept for reference)
 
 Scope:
 
@@ -880,12 +1021,12 @@ Scope:
 
 Acceptance:
 
-- [ ] Full suite green from clean.
-- [ ] Complete car and bike lifecycles work end-to-end.
-- [ ] Charging, fees, demo payment, alerts, stats, mode switching, reset, persistence verified.
-- [ ] Launch command documented and actually used.
-- [ ] No known failure reported as fixed.
-- [ ] README complete for a college demonstration.
+- [x] Full suite green from clean (289 / 0 / 0 / 0).
+- [x] Complete car and bike lifecycles work end-to-end (view tests plus browser walkthrough).
+- [x] Charging, fees, demo payment, alerts, stats, mode switching, reset, persistence verified.
+- [x] Launch command documented and actually used (`java -jar target/hilite-parking.jar`).
+- [x] No known failure reported as fixed. The Docker image is reported as **not built**.
+- [x] README complete for a college demonstration.
 
 Verification: clean build/test output + manual checklist + inspected UI.
 

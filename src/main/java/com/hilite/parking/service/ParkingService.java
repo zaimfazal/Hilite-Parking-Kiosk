@@ -7,6 +7,8 @@ import com.hilite.parking.repository.DataAccessException;
 import com.hilite.parking.repository.ParkingSessionRepository;
 import com.hilite.parking.repository.ParkingSlotRepository;
 import com.hilite.parking.util.RegistrationUtil;
+import org.sqlite.SQLiteErrorCode;
+import org.sqlite.SQLiteException;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -33,7 +35,8 @@ import java.util.stream.Collectors;
  * <p>Two kiosks may race for the same bay. Selection happens in memory, therefore the database
  * partial unique indexes on active registrations and active slots remain the final safeguard:
  * an insert that loses the race fails, and this service retries the next candidate instead of
- * trusting the earlier snapshot.</p>
+ * trusting the earlier snapshot. Only a SQLite constraint refusal counts as a lost race; a
+ * BUSY, I/O or other failure propagates at once, so a free lower bay is never skipped.</p>
  *
  * <p>Entry time is taken from the injected {@link Clock}; the two-argument constructor uses
  * {@link Clock#systemUTC()}. Tests can supply a fixed clock and get a deterministic timestamp.
@@ -145,6 +148,12 @@ public final class ParkingService {
                 sessionRepository.insertActive(session);
                 return new AllocationOutcome.Allocated(session, slot);
             } catch (DataAccessException failure) {
+                // Only a constraint refusal can mean "lost the race". BUSY, I/O and every other
+                // failure is a real persistence problem: trying the next bay would skip a free
+                // lower bay and break ascending order, so surface it immediately.
+                if (!isLostRace(failure)) {
+                    throw failure;
+                }
                 // The bay may have been taken by another kiosk, or this plate may already be
                 // active because of a concurrent entry. Never report "full" for a duplicate.
                 if (sessionRepository.findActiveByRegistration(normalized).isPresent()) {
@@ -161,6 +170,58 @@ public final class ParkingService {
             throw lastFailure;
         }
         return noBay(chargingRequested);
+    }
+
+    /**
+     * Read-only lookup for the allocation confirmation view.
+     *
+     * <p>Returns the stored session with its bay, even when the session has since been
+     * completed (the caller checks {@code session().exitTime()}). Never allocates and never
+     * writes.</p>
+     *
+     * @param sessionId id returned by a previous allocation
+     * @return the session and bay, or empty when the id is {@code null}, blank or unknown
+     * @throws DataAccessException if the database cannot be read, or the session refers to a
+     *                             bay that is not in the layout
+     */
+    public Optional<AllocationOutcome.Allocated> findAllocation(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<ParkingSession> found = sessionRepository.findById(sessionId);
+        if (found.isEmpty()) {
+            return Optional.empty();
+        }
+        ParkingSession session = found.get();
+        ParkingSlot slot = slotRepository.findById(session.slotId())
+                .orElseThrow(() -> new DataAccessException(
+                        "Parking session " + session.sessionId() + " refers to unknown bay "
+                                + session.slotId()));
+        return Optional.of(new AllocationOutcome.Allocated(session, slot));
+    }
+
+    /**
+     * True when the insert was refused by a SQLite constraint that a concurrent entry can
+     * cause: the active-slot / active-registration unique indexes ({@code SQLITE_CONSTRAINT_UNIQUE}),
+     * a primary-key clash, a trigger {@code RAISE(...)} ({@code SQLITE_CONSTRAINT_TRIGGER}), or
+     * a bare {@code SQLITE_CONSTRAINT} when the driver does not report an extended code. CHECK,
+     * NOT NULL and foreign-key violations, BUSY, I/O and anything without a SQLite cause are
+     * not races. The whole cause chain is inspected.
+     */
+    static boolean isLostRace(Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLiteException sqlite) {
+                SQLiteErrorCode code = sqlite.getResultCode();
+                return code == SQLiteErrorCode.SQLITE_CONSTRAINT_UNIQUE
+                        || code == SQLiteErrorCode.SQLITE_CONSTRAINT_PRIMARYKEY
+                        || code == SQLiteErrorCode.SQLITE_CONSTRAINT_TRIGGER
+                        || code == SQLiteErrorCode.SQLITE_CONSTRAINT;
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+        }
+        return false;
     }
 
     /**

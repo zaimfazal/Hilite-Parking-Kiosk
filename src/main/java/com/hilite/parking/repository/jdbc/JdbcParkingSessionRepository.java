@@ -7,12 +7,11 @@ import com.hilite.parking.repository.Database;
 import com.hilite.parking.repository.ParkingSessionRepository;
 import com.hilite.parking.util.RegistrationUtil;
 
-import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Instant;
+import java.time.DateTimeException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -184,20 +183,28 @@ public final class JdbcParkingSessionRepository implements ParkingSessionReposit
     }
 
     private static ParkingSession mapRow(ResultSet results) throws SQLException {
+        String sessionId = results.getString("session_id");
+        String registration = results.getString("registration");
+        String vehicleType = results.getString("vehicle_type");
+        int chargingRequested = results.getInt("charging_requested");
+        String slotId = results.getString("slot_id");
+        String entryText = results.getString("entry_time");
         String exitText = results.getString("exit_time");
-        Instant exitTime = exitText == null ? null : SqlCodec.parseInstant(exitText);
-
         long feePaise = results.getLong("final_fee_paise");
-        BigDecimal finalFee = results.wasNull() ? null : SqlCodec.fromPaise(feePaise);
+        boolean feeIsNull = results.wasNull();
 
-        return new ParkingSession(
-                results.getString("session_id"),
-                results.getString("registration"),
-                VehicleType.valueOf(results.getString("vehicle_type")),
-                results.getInt("charging_requested") == 1,
-                results.getString("slot_id"),
-                SqlCodec.parseInstant(results.getString("entry_time")),
-                exitTime,
-                finalFee);
+        try {
+            return new ParkingSession(
+                    sessionId,
+                    registration,
+                    VehicleType.valueOf(vehicleType),
+                    chargingRequested == 1,
+                    slotId,
+                    SqlCodec.parseInstant(entryText),
+                    exitText == null ? null : SqlCodec.parseInstant(exitText),
+                    feeIsNull ? null : SqlCodec.fromPaise(feePaise));
+        } catch (DateTimeException | IllegalArgumentException | NullPointerException corrupt) {
+            throw SqlCodec.corruptRow("parking_sessions", sessionId, corrupt);
+        }
     }
 }

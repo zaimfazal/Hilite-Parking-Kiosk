@@ -66,4 +66,16 @@ final class SqlCodec {
     static DataAccessException failure(String action, SQLException cause) {
         return new DataAccessException(action + " failed: " + cause.getMessage(), cause);
     }
+
+    /**
+     * Wraps a failure to turn a stored row into a model object (unparseable timestamp, unknown
+     * enum name, or a value the model rejects), so callers only ever see
+     * {@link DataAccessException} for bad stored data, with the original cause preserved.
+     */
+    static DataAccessException corruptRow(String table, String key, RuntimeException cause) {
+        return new DataAccessException(
+                "Stored " + table + " row " + (key == null ? "NULL" : "'" + key + "'")
+                        + " could not be read: " + cause.getMessage(),
+                cause);
+    }
 }

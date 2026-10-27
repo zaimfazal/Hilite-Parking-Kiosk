@@ -20,6 +20,14 @@ import java.util.Objects;
  * <p>Foreign-key enforcement is verified, not merely requested. If the pragma cannot be applied
  * or does not report {@code 1}, the half-configured connection is closed and the caller gets a
  * {@link DataAccessException} instead of a connection that silently ignores foreign keys.</p>
+ *
+ * <p><strong>Concurrency.</strong> {@link DatabaseInitializer#initialize()} switches the file
+ * to {@code journal_mode=WAL} once; that setting is stored in the file, so readers no longer
+ * block the single writer. The five-second {@code busy_timeout} is still applied to every
+ * connection so a writer waits for the lock instead of failing at once. Multi-statement write
+ * transactions use {@link #beginImmediate(Connection)}, which takes the write lock up front:
+ * a DEFERRED transaction that reads first and writes later could otherwise fail with
+ * {@code SQLITE_BUSY} on lock upgrade without honouring the busy timeout.</p>
  */
 public final class Database {
 
@@ -74,6 +82,42 @@ public final class Database {
                     "Could not open SQLite database at " + databaseFile.toAbsolutePath()
                             + ": " + e.getMessage(),
                     e);
+        }
+    }
+
+    /**
+     * Starts an explicit {@code BEGIN IMMEDIATE} transaction on a connection that is still in
+     * JDBC auto-commit mode (the state {@link #openConnection()} returns it in).
+     *
+     * <p>The statement is issued directly instead of using {@code setAutoCommit(false)},
+     * because the driver's implicit {@code BEGIN} is DEFERRED. With IMMEDIATE the write lock is
+     * acquired here, waiting up to the busy timeout, so later statements in the same
+     * transaction cannot fail on a lock upgrade. Finish with {@link #commit(Connection)} or
+     * {@link #rollback(Connection, Throwable)}, never with the JDBC {@code commit()} /
+     * {@code rollback()} methods (they refuse to run in auto-commit mode).</p>
+     */
+    public static void beginImmediate(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("BEGIN IMMEDIATE");
+        }
+    }
+
+    /** Commits a transaction started with {@link #beginImmediate(Connection)}. */
+    public static void commit(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("COMMIT");
+        }
+    }
+
+    /**
+     * Rolls back a transaction started with {@link #beginImmediate(Connection)}. A rollback
+     * failure is attached to {@code failure} as suppressed so the primary diagnostic is kept.
+     */
+    public static void rollback(Connection connection, Throwable failure) {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("ROLLBACK");
+        } catch (SQLException rollbackFailure) {
+            failure.addSuppressed(rollbackFailure);
         }
     }
 
