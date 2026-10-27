@@ -1,0 +1,309 @@
+/* ==========================================================================
+   HiLITE Mall Smart Parking — shared tokens and base controls
+   JavaFX CSS only: no browser-only features, no remote assets.
+   ========================================================================== */
+
+.root {
+    -hk-ink: #070b11;
+    -hk-navy: #0c1420;
+    -hk-text: #f4f7fb;
+    -hk-text-2: #aab6c6;
+    -hk-text-3: #7e8b9c;
+    -hk-blue: #2f7bff;
+    -hk-blue-hover: #4a8dff;
+    -hk-blue-deep: #1c5bd8;
+    -hk-cyan: #4dd6ff;
+    -hk-success: #2ed47a;
+    -hk-gold: #d9be86;
+    -hk-danger: #ff6b6b;
+    -hk-warning: #f2b544;
+
+    -ad-workspace: #f4f6fa;
+    -ad-card: #ffffff;
+    -ad-sidebar: #0b1523;
+    -ad-sidebar-2: #101d2e;
+    -ad-text: #101828;
+    -ad-text-2: #667085;
+    -ad-line: #e4e9f0;
+    -ad-blue: #1f62d6;
+    -ad-blue-soft: #eaf1ff;
+    -ad-available-text: #137a3d;
+    -ad-danger: #d64545;
+
+    -fx-font-family: "Segoe UI";
+    -fx-font-size: 14px;
+}
+
+.kiosk-root {
+    -fx-background-color: -hk-ink;
+}
+
+.admin-root {
+    -fx-background-color: -ad-workspace;
+}
+
+.kiosk-root .label {
+    -fx-text-fill: -hk-text;
+}
+
+.admin-root .label {
+    -fx-text-fill: -ad-text;
+}
+
+/* ---------- icon system ---------- */
+
+.icon-stroke {
+    -fx-fill: transparent;
+    -fx-stroke-width: 1.7;
+    -fx-stroke-line-cap: round;
+    -fx-stroke-line-join: round;
+}
+
+.icon-fill {
+    -fx-stroke: transparent;
+}
+
+.icon-stroke.icon-light { -fx-stroke: #e8eef7; }
+.icon-fill.icon-light { -fx-fill: #e8eef7; }
+
+.icon-stroke.icon-white { -fx-stroke: #ffffff; }
+.icon-fill.icon-white { -fx-fill: #ffffff; }
+
+.icon-stroke.icon-muted { -fx-stroke: #98a6b8; }
+.icon-fill.icon-muted { -fx-fill: #98a6b8; }
+
+.icon-stroke.icon-ink { -fx-stroke: #344054; }
+.icon-fill.icon-ink { -fx-fill: #344054; }
+
+.icon-stroke.icon-blue { -fx-stroke: -hk-blue; }
+.icon-fill.icon-blue { -fx-fill: -hk-blue; }
+
+.icon-stroke.icon-cyan { -fx-stroke: -hk-cyan; }
+.icon-fill.icon-cyan { -fx-fill: -hk-cyan; }
+
+.icon-stroke.icon-success { -fx-stroke: -hk-success; }
+.icon-fill.icon-success { -fx-fill: -hk-success; }
+
+.icon-stroke.icon-gold { -fx-stroke: -hk-gold; }
+.icon-fill.icon-gold { -fx-fill: -hk-gold; }
+
+.icon-stroke.icon-danger { -fx-stroke: -ad-danger; }
+.icon-fill.icon-danger { -fx-fill: -ad-danger; }
+
+.icon-holder {
+    -fx-background-color: transparent;
+}
+
+/* ---------- buttons ---------- */
+
+.primary-button {
+    -fx-background-color: linear-gradient(to right, #2f6bff, #1f5ae6);
+    -fx-background-radius: 13;
+    -fx-border-color: rgba(255, 255, 255, 0.10);
+    -fx-border-radius: 13;
+    -fx-border-width: 1;
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-padding: 10 20;
+    -fx-graphic-text-gap: 10;
+    -fx-content-display: left;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(31, 90, 230, 0.34), 18, 0.12, 0, 6);
+}
+
+.primary-button:hover {
+    -fx-background-color: linear-gradient(to right, #3f7cff, #2865ee);
+}
+
+.primary-button:pressed {
+    -fx-background-color: linear-gradient(to right, #255fe2, #184cc4);
+    -fx-effect: dropshadow(gaussian, rgba(31, 90, 230, 0.18), 10, 0.08, 0, 3);
+}
+
+.primary-button:focused {
+    -fx-border-color: rgba(255, 255, 255, 0.85);
+    -fx-border-width: 2;
+}
+
+.primary-button:disabled {
+    -fx-opacity: 0.55;
+    -fx-cursor: default;
+    -fx-effect: none;
+}
+
+.secondary-button {
+    -fx-background-color: rgba(255, 255, 255, 0.07);
+    -fx-background-radius: 13;
+    -fx-border-color: rgba(255, 255, 255, 0.18);
+    -fx-border-radius: 13;
+    -fx-border-width: 1;
+    -fx-text-fill: -hk-text;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-padding: 10 18;
+    -fx-graphic-text-gap: 9;
+    -fx-content-display: left;
+    -fx-cursor: hand;
+}
+
+.secondary-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.12);
+    -fx-border-color: rgba(255, 255, 255, 0.28);
+}
+
+.secondary-button:pressed {
+    -fx-background-color: rgba(255, 255, 255, 0.04);
+}
+
+.secondary-button:focused {
+    -fx-border-color: -hk-cyan;
+    -fx-border-width: 2;
+}
+
+.secondary-button:disabled {
+    -fx-opacity: 0.45;
+    -fx-cursor: default;
+}
+
+.gold-button {
+    -fx-background-color: linear-gradient(to right, #e6cf9c, #d3b474);
+    -fx-background-radius: 13;
+    -fx-border-color: rgba(255, 255, 255, 0.22);
+    -fx-border-radius: 13;
+    -fx-border-width: 1;
+    -fx-text-fill: #141a22;
+    -fx-font-size: 15px;
+    -fx-font-weight: bold;
+    -fx-padding: 12 20;
+    -fx-graphic-text-gap: 10;
+    -fx-content-display: left;
+    -fx-cursor: hand;
+    -fx-effect: dropshadow(gaussian, rgba(217, 190, 134, 0.25), 20, 0.10, 0, 6);
+}
+
+.gold-button:hover {
+    -fx-background-color: linear-gradient(to right, #f0dcb0, #ddc085);
+}
+
+.gold-button:focused {
+    -fx-border-color: white;
+    -fx-border-width: 2;
+}
+
+.ghost-button {
+    -fx-background-color: transparent;
+    -fx-border-color: rgba(255, 255, 255, 0.16);
+    -fx-border-radius: 999;
+    -fx-background-radius: 999;
+    -fx-text-fill: -hk-text-2;
+    -fx-font-size: 12px;
+    -fx-padding: 7 13;
+    -fx-graphic-text-gap: 7;
+    -fx-content-display: left;
+    -fx-cursor: hand;
+}
+
+.ghost-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.06);
+    -fx-text-fill: -hk-text;
+}
+
+.ghost-button:focused {
+    -fx-border-color: -hk-cyan;
+}
+
+.icon-button {
+    -fx-background-color: rgba(255, 255, 255, 0.06);
+    -fx-background-radius: 999;
+    -fx-border-color: rgba(255, 255, 255, 0.16);
+    -fx-border-radius: 999;
+    -fx-border-width: 1;
+    -fx-min-width: 38;
+    -fx-min-height: 38;
+    -fx-pref-width: 38;
+    -fx-pref-height: 38;
+    -fx-padding: 0;
+    -fx-cursor: hand;
+}
+
+.icon-button:hover {
+    -fx-background-color: rgba(77, 214, 255, 0.12);
+    -fx-border-color: rgba(77, 214, 255, 0.45);
+}
+
+.icon-button:focused {
+    -fx-border-color: -hk-cyan;
+    -fx-border-width: 2;
+}
+
+.field-clear-button {
+    -fx-background-color: transparent;
+    -fx-padding: 7;
+    -fx-min-width: 34;
+    -fx-min-height: 34;
+    -fx-cursor: hand;
+    -fx-background-radius: 8;
+}
+
+.field-clear-button:hover {
+    -fx-background-color: rgba(12, 22, 35, 0.08);
+}
+
+.field-clear-button:focused {
+    -fx-background-color: rgba(12, 22, 35, 0.06);
+    -fx-border-color: -hk-blue;
+    -fx-border-radius: 8;
+}
+
+.kiosk-cta {
+    -fx-min-height: 60;
+    -fx-pref-height: 60;
+    -fx-font-size: 16px;
+}
+
+/* ---------- feedback ---------- */
+
+.inline-error {
+    -fx-background-color: rgba(255, 107, 107, 0.13);
+    -fx-background-radius: 10;
+    -fx-border-color: rgba(255, 107, 107, 0.35);
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-text-fill: #ffb3b3;
+    -fx-font-size: 12px;
+    -fx-padding: 9 12;
+}
+
+.inline-info {
+    -fx-background-color: rgba(77, 214, 255, 0.10);
+    -fx-background-radius: 10;
+    -fx-border-color: rgba(77, 214, 255, 0.26);
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-text-fill: #b9e9fa;
+    -fx-font-size: 12px;
+    -fx-padding: 9 12;
+}
+
+/* ---------- progress ---------- */
+
+.button-spinner {
+    -fx-progress-color: white;
+}
+
+.button-spinner .percentage {
+    -fx-fill: transparent;
+}
+
+.modal-overlay {
+    -fx-background-color: rgba(3, 7, 12, 0.74);
+}
+
+/* ---------- compact density ---------- */
+
+.compact .kiosk-cta {
+    -fx-min-height: 56;
+    -fx-pref-height: 56;
+    -fx-font-size: 15px;
+}

@@ -1,0 +1,732 @@
+/* ==========================================================================
+   Admin dashboard — light operational workspace
+   ========================================================================== */
+
+.admin-shell {
+    -fx-background-color: -ad-workspace;
+}
+
+.admin-sidebar {
+    -fx-background-color: linear-gradient(to bottom, #0c1726, #091220);
+    -fx-padding: 24 16 20 16;
+    -fx-spacing: 6;
+}
+
+.sidebar-brand {
+    -fx-padding: 0 6 22 6;
+}
+
+.sidebar-brand-strong {
+    -fx-font-size: 24px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.sidebar-brand-light {
+    -fx-font-size: 24px;
+    -fx-text-fill: #cdd8e6;
+}
+
+.sidebar-brand-sub {
+    -fx-font-size: 8px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #c8ab72;
+}
+
+.sidebar-section {
+    -fx-font-size: 8px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #728196;
+    -fx-padding: 0 10 8 10;
+}
+
+.sidebar-nav-active {
+    -fx-background-color: linear-gradient(to right, rgba(47, 123, 255, 0.28), rgba(47, 123, 255, 0.08));
+    -fx-background-radius: 10;
+    -fx-border-color: rgba(102, 163, 255, 0.22);
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-text-fill: white;
+    -fx-font-size: 13px;
+    -fx-font-weight: bold;
+    -fx-padding: 10 13;
+    -fx-graphic-text-gap: 11;
+    -fx-alignment: center-left;
+    -fx-cursor: hand;
+}
+
+.sidebar-nav-active:focused {
+    -fx-border-color: #7cb4ff;
+}
+
+.sidebar-footer {
+    -fx-padding: 16 4 0 4;
+    -fx-border-color: rgba(255, 255, 255, 0.08) transparent transparent transparent;
+    -fx-border-width: 1 0 0 0;
+}
+
+.admin-avatar {
+    -fx-background-color: rgba(255, 255, 255, 0.10);
+    -fx-background-radius: 999;
+    -fx-border-color: rgba(255, 255, 255, 0.16);
+    -fx-border-radius: 999;
+    -fx-border-width: 1;
+    -fx-min-width: 32;
+    -fx-min-height: 32;
+    -fx-pref-width: 32;
+    -fx-pref-height: 32;
+}
+
+.admin-avatar .label {
+    -fx-text-fill: #e7edf6;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+}
+
+.sidebar-user {
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #e6edf6;
+}
+
+.sidebar-user-sub {
+    -fx-font-size: 9px;
+    -fx-text-fill: #7d8da3;
+}
+
+.sidebar-lock {
+    -fx-background-color: rgba(255, 255, 255, 0.05);
+    -fx-background-radius: 9;
+    -fx-border-color: rgba(255, 255, 255, 0.10);
+    -fx-border-radius: 9;
+    -fx-text-fill: #c9d5e4;
+    -fx-font-size: 10px;
+    -fx-padding: 9 10;
+    -fx-alignment: center-left;
+    -fx-graphic-text-gap: 9;
+    -fx-cursor: hand;
+}
+
+.sidebar-lock:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.10);
+    -fx-text-fill: white;
+}
+
+.sidebar-lock:focused {
+    -fx-border-color: #7cb4ff;
+}
+
+.sidebar-tagline {
+    -fx-font-size: 7px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #65758a;
+    -fx-padding: 2 0 0 0;
+}
+
+/* ---------- top bar ---------- */
+
+.admin-main {
+    -fx-background-color: -ad-workspace;
+}
+
+.admin-topbar {
+    -fx-background-color: white;
+    -fx-padding: 14 24 14 24;
+    -fx-border-color: transparent transparent -ad-line transparent;
+    -fx-border-width: 0 0 1 0;
+}
+
+.admin-title {
+    -fx-font-size: 25px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ad-text;
+}
+
+.admin-subtitle {
+    -fx-font-size: 11px;
+    -fx-text-fill: -ad-text-2;
+}
+
+.preview-pill {
+    -fx-background-color: #eef3ff;
+    -fx-background-radius: 999;
+    -fx-text-fill: #41608f;
+    -fx-font-size: 7px;
+    -fx-font-weight: bold;
+    -fx-padding: 3 7;
+}
+
+.mode-switch {
+    -fx-background-color: #f2f5f9;
+    -fx-background-radius: 10;
+    -fx-border-color: #e7ebf2;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 3;
+}
+
+.mode-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 7;
+    -fx-border-color: transparent;
+    -fx-border-radius: 7;
+    -fx-text-fill: #475467;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-padding: 8 13;
+    -fx-graphic-text-gap: 7;
+    -fx-cursor: hand;
+}
+
+.mode-button:hover {
+    -fx-background-color: #e9eef6;
+}
+
+.mode-button:selected {
+    -fx-background-color: -ad-blue;
+    -fx-text-fill: white;
+}
+
+.mode-button:selected .icon-stroke {
+    -fx-stroke: white;
+}
+
+.mode-button:selected .icon-fill {
+    -fx-fill: white;
+}
+
+.mode-button:focused {
+    -fx-border-color: #2f6bff;
+}
+
+.danger-ghost-button {
+    -fx-background-color: #fff4f4;
+    -fx-background-radius: 9;
+    -fx-border-color: #f3c8c8;
+    -fx-border-radius: 9;
+    -fx-border-width: 1;
+    -fx-text-fill: #b93030;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+    -fx-padding: 8 13;
+    -fx-graphic-text-gap: 7;
+    -fx-cursor: hand;
+}
+
+.danger-ghost-button:hover {
+    -fx-background-color: #ffe8e8;
+    -fx-border-color: #eaa8a8;
+}
+
+.danger-ghost-button:focused {
+    -fx-border-color: -ad-danger;
+    -fx-border-width: 2;
+}
+
+/* ---------- workspace ---------- */
+
+.admin-scroll {
+    -fx-background-color: transparent;
+    -fx-padding: 0;
+}
+
+.admin-scroll > .viewport {
+    -fx-background-color: transparent;
+}
+
+.admin-scroll .scroll-bar:vertical {
+    -fx-background-color: transparent;
+    -fx-pref-width: 10;
+}
+
+.admin-scroll .scroll-bar:vertical .thumb {
+    -fx-background-color: #c7d0dd;
+    -fx-background-radius: 999;
+}
+
+.admin-workspace {
+    -fx-padding: 18 24 24 24;
+}
+
+.admin-inline-info {
+    -fx-background-color: #edf4ff;
+    -fx-background-radius: 10;
+    -fx-border-color: #cfe0fb;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-text-fill: #315a91;
+    -fx-font-size: 11px;
+    -fx-padding: 10 12;
+}
+
+/* ---------- KPI cards ---------- */
+
+.kpi-row {
+    -fx-alignment: top-left;
+}
+
+.stat-card {
+    -fx-background-color: -ad-card;
+    -fx-background-radius: 14;
+    -fx-border-color: #e7ebf2;
+    -fx-border-radius: 14;
+    -fx-border-width: 1;
+    -fx-padding: 13 15;
+    -fx-min-width: 0;
+    -fx-effect: dropshadow(gaussian, rgba(16, 24, 40, 0.045), 14, 0.10, 0, 3);
+}
+
+.stat-icon {
+    -fx-background-color: #f2f5f9;
+    -fx-background-radius: 10;
+    -fx-min-width: 42;
+    -fx-min-height: 42;
+    -fx-pref-width: 42;
+    -fx-pref-height: 42;
+}
+
+.stat-icon.available {
+    -fx-background-color: #eaf9f0;
+}
+
+.stat-icon.small {
+    -fx-min-width: 34;
+    -fx-min-height: 34;
+    -fx-pref-width: 34;
+    -fx-pref-height: 34;
+}
+
+.stat-label {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #667085;
+}
+
+.stat-value {
+    -fx-font-family: "Bahnschrift SemiBold";
+    -fx-font-size: 31px;
+    -fx-text-fill: -ad-text;
+}
+
+.stat-hint {
+    -fx-font-size: 9px;
+    -fx-text-fill: #8a94a6;
+    -fx-padding: 3 0 0 0;
+}
+
+/* ---------- panels ---------- */
+
+.dashboard-columns {
+    -fx-alignment: top-left;
+}
+
+.panel-card {
+    -fx-background-color: -ad-card;
+    -fx-background-radius: 16;
+    -fx-border-color: #e7ebf2;
+    -fx-border-radius: 16;
+    -fx-border-width: 1;
+    -fx-padding: 14 16 14 16;
+    -fx-effect: dropshadow(gaussian, rgba(16, 24, 40, 0.045), 16, 0.10, 0, 4);
+}
+
+.panel-heading {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ad-text;
+}
+
+.panel-heading-small {
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ad-text;
+}
+
+.panel-subheading {
+    -fx-font-size: 9px;
+    -fx-text-fill: #8a94a6;
+}
+
+.count-pill {
+    -fx-background-color: #f2f5f9;
+    -fx-background-radius: 999;
+    -fx-text-fill: #667085;
+    -fx-font-size: 7px;
+    -fx-font-weight: bold;
+    -fx-padding: 4 8;
+}
+
+.subtle-pill {
+    -fx-background-color: #f4f6f9;
+    -fx-background-radius: 999;
+    -fx-text-fill: #8a94a6;
+    -fx-font-size: 7px;
+    -fx-font-weight: bold;
+    -fx-padding: 3 7;
+}
+
+.bay-grid {
+    -fx-padding: 4 0 0 0;
+}
+
+/* ---------- bay tiles ---------- */
+
+.bay-tile {
+    -fx-background-color: #f6fbf8;
+    -fx-background-radius: 10;
+    -fx-border-color: #d5efe0;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-padding: 5 7;
+    -fx-min-height: 74;
+    -fx-pref-height: 74;
+    -fx-max-height: 74;
+    -fx-cursor: hand;
+    -fx-alignment: center-left;
+}
+
+.bay-tile.is-occupied {
+    -fx-background-color: #f7f9fb;
+    -fx-border-color: #e0e6ee;
+}
+
+.bay-tile:hover {
+    -fx-border-color: #a9c9ee;
+    -fx-background-color: #f2f8ff;
+}
+
+.bay-tile:selected {
+    -fx-background-color: #eef5ff;
+    -fx-border-color: #2f6bff;
+    -fx-border-width: 2;
+}
+
+.bay-tile:focused {
+    -fx-border-color: #2f6bff;
+    -fx-border-width: 2;
+}
+
+.bay-id {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #243447;
+}
+
+.bay-ev-badge {
+    -fx-background-color: #edf2ff;
+    -fx-background-radius: 999;
+    -fx-padding: 1 4;
+}
+
+.bay-ev-tag {
+    -fx-font-size: 6.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #4d6fd1;
+}
+
+.bay-plate {
+    -fx-font-size: 10.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #1d2939;
+}
+
+.bay-available {
+    -fx-font-size: 10.5px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #137a3d;
+}
+
+.bay-sub {
+    -fx-font-size: 7.5px;
+    -fx-text-fill: #7b8797;
+}
+
+/* ---------- bay details ---------- */
+
+.bay-detail-card {
+    -fx-min-height: 132;
+}
+
+.bay-detail-title {
+    -fx-font-size: 17px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ad-text;
+}
+
+.status-pill {
+    -fx-background-radius: 999;
+    -fx-border-radius: 999;
+    -fx-border-width: 1;
+    -fx-font-size: 8px;
+    -fx-font-weight: bold;
+    -fx-padding: 2 7;
+}
+
+.status-pill.is-free {
+    -fx-background-color: #eaf9f0;
+    -fx-border-color: #bfe9cf;
+    -fx-text-fill: #137a3d;
+}
+
+.status-pill.is-occupied {
+    -fx-background-color: #f3f5f8;
+    -fx-border-color: #dce3ed;
+    -fx-text-fill: #475467;
+}
+
+.bay-detail-meta {
+    -fx-font-size: 9px;
+    -fx-text-fill: #7b8797;
+}
+
+.bay-detail-session {
+    -fx-font-size: 10px;
+    -fx-text-fill: #475467;
+}
+
+/* ---------- snapshot / peak ---------- */
+
+.tiny-icon {
+    -fx-background-color: #f5f7fa;
+    -fx-background-radius: 6;
+    -fx-min-width: 24;
+    -fx-min-height: 24;
+    -fx-pref-width: 24;
+    -fx-pref-height: 24;
+}
+
+.snapshot-label {
+    -fx-font-size: 10px;
+    -fx-text-fill: #667085;
+}
+
+.snapshot-value {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #344054;
+}
+
+.card-divider {
+    -fx-min-height: 1;
+    -fx-pref-height: 1;
+    -fx-max-height: 1;
+    -fx-background-color: #edf0f5;
+}
+
+.ev-usage-bar {
+    -fx-min-height: 5;
+    -fx-pref-height: 5;
+    -fx-max-height: 5;
+}
+
+.ev-usage-bar > .track {
+    -fx-background-color: #edf1f7;
+    -fx-background-radius: 999;
+}
+
+.ev-usage-bar > .bar {
+    -fx-background-color: linear-gradient(to right, #2f7bff, #6aa6ff);
+    -fx-background-radius: 999;
+    -fx-background-insets: 0;
+}
+
+.peak-card {
+    -fx-padding: 12 16;
+}
+
+.peak-value {
+    -fx-font-family: "Bahnschrift SemiBold";
+    -fx-font-size: 22px;
+    -fx-text-fill: -ad-text;
+}
+
+/* ---------- alerts ---------- */
+
+.alerts-card {
+    -fx-padding: 13 16 14 16;
+}
+
+.alert-count {
+    -fx-background-color: #fdecec;
+    -fx-background-radius: 999;
+    -fx-text-fill: #c03535;
+    -fx-font-size: 8px;
+    -fx-font-weight: bold;
+    -fx-padding: 2 6;
+}
+
+.alert-row {
+    -fx-background-color: #fff8f6;
+    -fx-background-radius: 9;
+    -fx-border-color: #f5e0d9;
+    -fx-border-radius: 9;
+    -fx-border-width: 1;
+    -fx-padding: 7 9;
+}
+
+.alert-plate {
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #344054;
+}
+
+.alert-duration {
+    -fx-font-size: 9px;
+    -fx-font-weight: bold;
+    -fx-text-fill: #c03535;
+}
+
+.alert-meta {
+    -fx-font-size: 8px;
+    -fx-text-fill: #7b8797;
+}
+
+.empty-state {
+    -fx-font-size: 9px;
+    -fx-text-fill: #98a2b3;
+    -fx-padding: 6 0;
+}
+
+/* ---------- modal ---------- */
+
+.admin-modal-overlay {
+    -fx-background-color: rgba(10, 17, 28, 0.58);
+}
+
+.admin-dialog {
+    -fx-background-color: white;
+    -fx-background-radius: 18;
+    -fx-border-color: #e4e9f0;
+    -fx-border-radius: 18;
+    -fx-border-width: 1;
+    -fx-padding: 24 26 22 26;
+    -fx-spacing: 8;
+    -fx-effect: dropshadow(gaussian, rgba(16, 24, 40, 0.30), 40, 0.18, 0, 16);
+}
+
+.dialog-icon {
+    -fx-background-color: #fdecec;
+    -fx-background-radius: 999;
+    -fx-min-width: 50;
+    -fx-min-height: 50;
+    -fx-pref-width: 50;
+    -fx-pref-height: 50;
+}
+
+.dialog-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-fill: -ad-text;
+}
+
+.dialog-copy {
+    -fx-font-size: 11px;
+    -fx-text-fill: #667085;
+    -fx-line-spacing: 2;
+}
+
+.dialog-actions {
+    -fx-padding: 10 0 0 0;
+}
+
+.dialog-actions .secondary-button {
+    -fx-background-color: #f2f5f9;
+    -fx-border-color: #dfe5ee;
+    -fx-text-fill: #344054;
+    -fx-effect: none;
+}
+
+.dialog-actions .secondary-button:hover {
+    -fx-background-color: #e8edf4;
+}
+
+.danger-button {
+    -fx-background-color: linear-gradient(to right, #dc5757, #c33f3f);
+    -fx-background-radius: 12;
+    -fx-border-color: rgba(255, 255, 255, 0.18);
+    -fx-border-radius: 12;
+    -fx-text-fill: white;
+    -fx-font-size: 12px;
+    -fx-font-weight: bold;
+    -fx-padding: 9 16;
+    -fx-cursor: hand;
+}
+
+.danger-button:hover {
+    -fx-background-color: linear-gradient(to right, #e46464, #cb4949);
+}
+
+.danger-button:focused {
+    -fx-border-color: #8f2424;
+    -fx-border-width: 2;
+}
+
+/* ---------- compact admin ---------- */
+
+.compact .admin-sidebar {
+    -fx-pref-width: 212;
+    -fx-padding: 18 12 16 12;
+}
+
+.compact .sidebar-brand {
+    -fx-padding: 0 6 14 6;
+}
+
+.compact .admin-topbar {
+    -fx-padding: 10 18 10 18;
+}
+
+.compact .admin-title {
+    -fx-font-size: 22px;
+}
+
+.compact .admin-workspace {
+    -fx-padding: 12 18 18 18;
+}
+
+.compact .stat-card {
+    -fx-padding: 10 12;
+}
+
+.compact .stat-value {
+    -fx-font-size: 26px;
+}
+
+.compact .stat-icon {
+    -fx-min-width: 36;
+    -fx-min-height: 36;
+    -fx-pref-width: 36;
+    -fx-pref-height: 36;
+}
+
+.compact .panel-card {
+    -fx-padding: 11 13;
+}
+
+.compact .floor-card {
+    -fx-padding: 10 12;
+}
+
+.compact .bay-tile {
+    -fx-min-height: 66;
+    -fx-pref-height: 66;
+    -fx-max-height: 66;
+    -fx-padding: 4 6;
+}
+
+.compact .bay-sub {
+    -fx-font-size: 7px;
+}
+
+.compact .bay-plate,
+.compact .bay-available {
+    -fx-font-size: 9.5px;
+}
+
+.compact .bay-detail-card {
+    -fx-min-height: 112;
+}
+
+.compact .side-column {
+    -fx-spacing: 12;
+}

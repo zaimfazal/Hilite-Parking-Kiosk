@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.PasswordField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.ColumnConstraints?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.layout.VBox?>
+
+<StackPane xmlns="http://javafx.com/javafx/21"
+           xmlns:fx="http://javafx.com/fxml/1"
+           fx:controller="com.hilite.parking.controller.AdminPinController"
+           onKeyPressed="#handleKeyPressed"
+           styleClass="kiosk-root, admin-pin-root">
+    <StackPane fx:id="backdropHost" mouseTransparent="true"/>
+    <Region mouseTransparent="true" styleClass="pin-scrim"/>
+
+    <VBox maxWidth="1720" styleClass="kiosk-shell">
+        <BorderPane styleClass="kiosk-header">
+            <left>
+                <VBox spacing="2">
+                    <HBox alignment="CENTER_LEFT" spacing="10" styleClass="brand-lockup">
+                        <Label text="HiLITE" styleClass="brand-strong"/>
+                        <Label text="MALL" styleClass="brand-light"/>
+                    </HBox>
+                    <Label text="PARKING MANAGEMENT" styleClass="brand-eyebrow"/>
+                </VBox>
+            </left>
+            <center>
+                <Label text="ADMINISTRATOR ACCESS" styleClass="kiosk-header-title"/>
+            </center>
+            <right>
+                <HBox alignment="CENTER_RIGHT" spacing="18">
+                    <VBox alignment="CENTER_RIGHT" spacing="1">
+                        <Label fx:id="dateLabel" styleClass="header-date"/>
+                        <Label fx:id="timeLabel" styleClass="header-time"/>
+                    </VBox>
+                    <Button fx:id="backButton" onAction="#handleBack" styleClass="ghost-button" text="Return to kiosk">
+                        <graphic>
+                            <StackPane styleClass="icon-holder"/>
+                        </graphic>
+                    </Button>
+                </HBox>
+            </right>
+            <padding>
+                <Insets top="18" right="0" bottom="14" left="0"/>
+            </padding>
+        </BorderPane>
+
+        <StackPane VBox.vgrow="ALWAYS">
+            <VBox fx:id="pinCard" alignment="CENTER" maxWidth="510" maxHeight="-Infinity" spacing="0" styleClass="glass-panel, pin-card">
+                <StackPane fx:id="shieldBadge" styleClass="shield-badge"/>
+                <Label text="Administrator Access" styleClass="pin-title"/>
+                <Label text="Enter your demo PIN to continue." styleClass="pin-subtitle"/>
+                <Region minHeight="18"/>
+
+                <PasswordField fx:id="pinField" alignment="CENTER" maxWidth="Infinity" onAction="#handleUnlock"
+                               promptText="Enter 4-digit PIN" styleClass="pin-field"/>
+                <Label fx:id="errorLabel" managed="false" styleClass="inline-error, pin-error"
+                       text="Invalid PIN. Please try again." visible="false" wrapText="true"/>
+                <Region minHeight="14"/>
+
+                <GridPane hgap="12" vgap="12" maxWidth="Infinity" styleClass="pin-keypad">
+                    <columnConstraints>
+                        <ColumnConstraints percentWidth="33.333"/>
+                        <ColumnConstraints percentWidth="33.333"/>
+                        <ColumnConstraints percentWidth="33.333"/>
+                    </columnConstraints>
+                    <Button maxWidth="Infinity" onAction="#handleDigit" styleClass="pin-key" text="1" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                    <Button maxWidth="Infinity" onAction="#handleDigit" styleClass="pin-key" text="2" GridPane.columnIndex="1" GridPane.rowIndex="0"/>
+                    <Button maxWidth="Infinity" onAction="#handleDigit" styleClass="pin-key" text="3" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
+                    <Button maxWidth="Infinity" onAction="#handleDigit" styleClass="pin-key" text="4" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                    <Button maxWidth="Infinity" onAction="#handleDigit" styleClass="pin-key" text="5" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                    <Button maxWidth="Infinity" onAction="#handleDigit" styleClass="pin-key" text="6" GridPane.columnIndex="2" GridPane.rowIndex="1"/>
+                    <Button maxWidth="Infinity" onAction="#handleDigit" styleClass="pin-key" text="7" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+                    <Button maxWidth="Infinity" onAction="#handleDigit" styleClass="pin-key" text="8" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+                    <Button maxWidth="Infinity" onAction="#handleDigit" styleClass="pin-key" text="9" GridPane.columnIndex="2" GridPane.rowIndex="2"/>
+                    <Button maxWidth="Infinity" onAction="#handleClear" styleClass="pin-key, pin-key-small" text="Clear" GridPane.columnIndex="0" GridPane.rowIndex="3"/>
+                    <Button maxWidth="Infinity" onAction="#handleDigit" styleClass="pin-key" text="0" GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+                    <Button fx:id="backspaceButton" accessibleText="Backspace" maxWidth="Infinity" onAction="#handleBackspace"
+                            styleClass="pin-key" GridPane.columnIndex="2" GridPane.rowIndex="3"/>
+                </GridPane>
+
+                <Region minHeight="18"/>
+                <Button fx:id="unlockButton" defaultButton="true" maxWidth="Infinity" onAction="#handleUnlock"
+                        styleClass="gold-button, pin-unlock" text="Unlock Dashboard"/>
+                <Label text="Demonstration authentication only. The PIN is not a production credential."
+                       styleClass="pin-note" wrapText="true"/>
+            </VBox>
+        </StackPane>
+
+        <HBox alignment="CENTER_LEFT" spacing="9" styleClass="kiosk-footer">
+            <Label text="i" styleClass="footer-info"/>
+            <Label text="Administrator area — no customer parking data is modified by unlocking."
+                   styleClass="footer-copy"/>
+            <Region HBox.hgrow="ALWAYS"/>
+            <Label text="HiLITE MALL · PARKING MANAGEMENT" styleClass="footer-tagline"/>
+        </HBox>
+    </VBox>
+</StackPane>

@@ -1,0 +1,46 @@
+# --- Build output ---
+target/
+build/
+out/
+*.class
+
+# --- Local database (demo data must never be committed) ---
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# --- Logs ---
+logs/
+*.log
+hs_err_pid*.log
+replay_pid*.log
+
+# --- Local configuration / secrets ---
+.env
+.env.*
+local.properties
+config.local.*
+*.local
+
+# --- Test and tooling output ---
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# --- OS noise ---
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# --- Temporary files ---
+*.tmp
+*.bak
+~$*
+
+# Note: Design References/ is intentionally tracked.
