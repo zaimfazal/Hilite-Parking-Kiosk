@@ -23,7 +23,9 @@ This file is updated at the end of every phase with real results.
 | Project contents at Phase 0 | `Design References/` only; no `pom.xml`, no source |
 
 **Design references present** (all five, under `Design References/`; note the folder/filenames
-differ from the paths suggested in the master prompt — no reference is missing):
+differ from the paths suggested in the master prompt — no reference is missing). The folder was
+removed from the repository in the 2026-10-29 tidy-up; `UI_GUIDE.md` remains the visual
+contract:
 
 | Prompt path | Actual file | Used for |
 |---|---|---|

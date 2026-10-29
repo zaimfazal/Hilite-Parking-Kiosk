@@ -1,8 +1,9 @@
 # HiLITE Mall Smart Parking — UI Guide
 
 Visual contract for the application. Derived from the five supplied design references, which
-were inspected in Phase 0. References define the design language, not pixel-exact cloning.
-This guide is authoritative for later phases; deviations require a documented reason.
+were inspected in Phase 0 and removed from the repository in the 2026-10-29 tidy-up. References
+define the design language, not pixel-exact cloning. This guide is authoritative for later
+phases; deviations require a documented reason.
 
 > **Since Phase 7 (2026-10-28) the UI is a Java website (Vaadin Flow 25.3).** The design
 > language, tokens and component specifications below still apply. §4 ("JavaFX-safe" glass)

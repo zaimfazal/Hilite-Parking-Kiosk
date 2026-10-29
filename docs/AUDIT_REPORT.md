@@ -40,6 +40,9 @@ The lead reviewed and merged their findings. Findings use exactly one classifica
 
 ### 1.1 Design references
 
+> The five mockups below were reference material for Phase 1. They were removed from the
+> repository on 2026-10-29 during the Phase 8 tidy-up; the visual contract is `UI_GUIDE.md`.
+
 | File | Pixels | Screen |
 |---|---|---|
 | `HiLITE Mall Smart Parking Kiosk.png` | 1672×941 | Entry kiosk |

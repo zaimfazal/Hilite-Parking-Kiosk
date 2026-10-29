@@ -18,8 +18,8 @@ It has:
 >   See §6.
 >
 > Earlier phases (1–5) shipped a JavaFX desktop app. It was replaced by the web app in
-> Phase 7, and the JavaFX code remains in Git history. Details: `AUDIT_REPORT.md`,
-> `PHASE_PLAN.md`.
+> Phase 7, and the JavaFX code remains in Git history. Details: `docs/AUDIT_REPORT.md`,
+> `docs/PHASE_PLAN.md`.
 
 There is no camera, ANPR hardware, printer, charging hardware or payment gateway. Scanning,
 printing and payment are simulated, and the UI says so.
@@ -387,8 +387,16 @@ were not tested.
 Hilite-Parking-Kiosk/
 ├─ pom.xml                     Spring Boot 4.1.2 parent, Vaadin BOM 25.3.4, sqlite-jdbc
 ├─ Dockerfile, .dockerignore, docker-compose.yml, .env.example
-├─ AUDIT_REPORT.md  PHASE_PLAN.md  PROJECT_RULES.md  UI_GUIDE.md  README.md
-├─ Design References/          five mockups (reference only, not runtime assets)
+├─ render.yaml                 Render blueprint (Docker deploy + health check)
+├─ vercel-landing/             static landing page (separate Vercel project)
+├─ README.md                   overview, business rules, run and verification instructions
+├─ docs/                       project documents
+│  ├─ AUDIT_REPORT.md          full repository audit and migration plan
+│  ├─ PHASE_PLAN.md            phase history (0–7) with real results
+│  ├─ PROJECT_RULES.md         stack, architecture rules, frozen business rules
+│  ├─ UI_GUIDE.md              design system and web implementation notes
+│  ├─ DATABASE.md              SQLite schema, ER diagram and viva demo queries
+│  └─ TECHNICAL_GUIDE.md       API, Java concepts, architecture and teacher Q&A
 └─ src/
    ├─ main/java/com/hilite/parking/
    │  ├─ HiliteParkingApplication.java    Spring Boot + Vaadin app shell
@@ -414,7 +422,9 @@ Hilite-Parking-Kiosk/
 
 | File | Purpose |
 |---|---|
-| `AUDIT_REPORT.md` | Full repository audit, findings, and migration plan |
-| `PHASE_PLAN.md` | Phase history (0–7) with real results |
-| `PROJECT_RULES.md` | Stack, architecture rules, frozen business rules, quality bar |
-| `UI_GUIDE.md` | Design system; §11 covers the web implementation |
+| `docs/AUDIT_REPORT.md` | Full repository audit, findings, and migration plan |
+| `docs/PHASE_PLAN.md` | Phase history (0–7) with real results |
+| `docs/PROJECT_RULES.md` | Stack, architecture rules, frozen business rules, quality bar |
+| `docs/UI_GUIDE.md` | Design system; §11 covers the web implementation |
+| `docs/DATABASE.md` | SQLite file, schema, ER diagram, demo data and queries for the viva |
+| `docs/TECHNICAL_GUIDE.md` | API used, Java concepts, architecture, tech stack and teacher Q&A |

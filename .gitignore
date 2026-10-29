@@ -46,6 +46,7 @@ config.local.*
 .settings/
 .classpath
 .project
+.freebuff/
 
 # --- OS noise ---
 Thumbs.db
@@ -56,5 +57,3 @@ desktop.ini
 *.tmp
 *.bak
 ~$*
-
-# Note: Design References/ is intentionally tracked.

@@ -36,9 +36,10 @@ data
 Thumbs.db
 *.log
 
-# Not needed to build or run (design mock-ups and project documents)
-Design References
+# Not needed to build or run (project documents and tool metadata)
 *.md
+docs
+.freebuff
 .claude
 
 # Docker files themselves

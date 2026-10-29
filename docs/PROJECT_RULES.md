@@ -241,7 +241,8 @@ The full visual contract is in `UI_GUIDE.md`. Mandatory points:
 ## 9. Assets and licensing
 
 - Only bundle images/fonts that are free to use and document their origin.
-- The five supplied images in `Design References/` are **design mockups**, not runtime UI.
+- The five supplied design images were **reference mockups**, not runtime UI. They have been
+  removed from the repository; the visual contract in `UI_GUIDE.md` is authoritative.
   Do not use a whole mockup as a screen, and do not crop mockup UI into assets.
 - No remote URLs (images, fonts, scripts) in CSS or views at runtime.
 - If photo assets are unavailable, ship the gradient fallback defined in `UI_GUIDE.md`.
@@ -256,7 +257,7 @@ The full visual contract is in `UI_GUIDE.md`. Mandatory points:
   `node_modules/`, logs, local config (except `.env.example`), IDE files.
 - The project is a Git repository with a GitHub remote. Commit, push, merge or run any
   destructive Git command only when the owner asks.
-- Design references are kept in the repo.
+- Design mock-ups are not shipped; the visual contract in `UI_GUIDE.md` is authoritative.
 - Phase reports must list every created/modified file.
 
 ---
